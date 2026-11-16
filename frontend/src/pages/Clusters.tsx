@@ -134,7 +134,7 @@ export function ClusterDetail({
     }
   }
   async function confirmProtected(
-    action: "live_scanner" | "extended" | "operator" | "remediate",
+    action: "live_scanner" | "extended" | "operator" | "continuous",
   ) {
     const attempt = ++actionGeneration.current;
     setBusy(action);
@@ -277,10 +277,11 @@ export function ClusterDetail({
                 Остановить
               </button>
             </div>
-            <h3>Действия, которые изменили бы кластер</h3>
+            <h3>Дополнительные проверки</h3>
             <p className="small muted">
-              Подтверждение только записывается. Запрос в кластер не
-              отправляется.
+              Сканеры не меняют кластер. Расширенная проверка и оператор
+              меняют его и запускаются только этой кнопкой. Исправление
+              отдельной находки подтверждается в карточке находки.
             </p>
             <div className="button-row">
               {(
@@ -288,7 +289,7 @@ export function ClusterDetail({
                   ["live_scanner", "Сканеры"],
                   ["extended", "Расширенные"],
                   ["operator", "Оператор"],
-                  ["remediate", "Исправление"],
+                  ["continuous", "Наблюдение"],
                 ] as const
               ).map(([action, label]) => (
                 <button

@@ -27,8 +27,8 @@ from workbench.db import (
 from workbench.domain import DomainError
 from workbench.migrations import require_runtime_schema
 from workbench.namespaces import validate_inventory_url, validate_run_scope
+from workbench.actions import assert_safe_write, load_remediation_target, perform, validate_action_url
 from workbench.rollout import enqueue_due_schedules, purge_expired_results
-from workbench.scanners import scan_inventory
 from workbench.security import Vault, connection_headers, connection_tls
 from workbench.services import (
     AUTH_FIELDS,
@@ -118,6 +118,52 @@ class RunHTTP:
                 raise DomainError("Run snapshot changed", "scope_changed")
         return result
 
+    def _exchange(self, method: str, url: str, body=None):
+        with self.sessions() as session:
+            require_runtime_schema(session)
+            run = authorized_run(session, self.run_id, self.worker_id)
+            if run.source not in {"extended", "operator", "remediate"}:
+                raise DomainError("Запись не подтверждена для этого запуска", "scope_denied")
+            connection = run_connection(self.vault, run)
+            validate_action_url(url, connection["server"], run.scope["namespaces"], method)
+            assert_safe_write(method, url, body)
+            cluster = permitted_cluster(session, session.get(User, run.actor_id), run.cluster_id)
+            if connection.get("auth_type") != cluster.auth_type:
+                raise DomainError("Authentication mode changed", "authorization_required")
+            client_identity = connection_tls(connection)
+            options = {"client_identity": client_identity} if client_identity is not None else {}
+            http = policy_http(session, self.settings, "kubernetes", connection.get("ca_data"), **options)
+            session.commit()
+        headers = connection_headers(connection)
+        if method == "GET":
+            result = http.get_json(url, headers=headers)
+        elif method == "POST":
+            result = http.post_json(url, body, headers=headers)
+        elif method == "DELETE":
+            result = http.delete_json(url, headers=headers)
+        elif method == "PATCH":
+            result = http.patch_json(url, body, headers=headers)
+        else:
+            raise DomainError("Метод не разрешён", "scope_denied")
+        with self.sessions() as session:
+            require_runtime_schema(session)
+            current = authorized_run(session, self.run_id, self.worker_id)
+            if run_connection(self.vault, current) != connection:
+                raise DomainError("Run snapshot changed", "scope_changed")
+        return result
+
+    def get_action(self, url, headers=None):
+        return self._exchange("GET", url)
+
+    def post_json(self, url, data, headers=None):
+        return self._exchange("POST", url, data)
+
+    def delete_json(self, url, headers=None):
+        return self._exchange("DELETE", url)
+
+    def patch_json(self, url, data, headers=None):
+        return self._exchange("PATCH", url, data)
+
 
 def collect(connection: dict, scope: dict, settings: Settings, run_id: str, worker_id: str, output) -> None:
     """Pass credentials in memory; mTLS loading uses immediately unlinked TLS files."""
@@ -125,7 +171,13 @@ def collect(connection: dict, scope: dict, settings: Settings, run_id: str, work
     try:
         engine, sessions = database(settings.database_url)
         http = RunHTTP(sessions, settings, run_id, worker_id)
-        result = scan_inventory(connection, scope, http, lambda: False)
+        with sessions() as session:
+            require_runtime_schema(session)
+            run = session.get(Run, run_id)
+            source = run.source if run else "api"
+            finding = load_remediation_target(session, run_id) if source == "remediate" else None
+            session.commit()
+        result = perform(source, connection, scope, http, settings, finding)
         output.send(("ok", result))
     except DomainError as exc:
         output.send(("error", exc.code))

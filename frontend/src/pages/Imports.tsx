@@ -47,9 +47,12 @@ export function ImportsPage({
     setCreated(undefined);
     try {
       if (!report) throw new Error("Выберите корректный JSON-отчёт.");
-      const run = await api<Run>("/imports", {
+      const runtime = scanner === "falco" || scanner === "tetragon";
+      const run = await api<Run>(runtime ? "/runtime-imports" : "/imports", {
         method: "POST",
-        body: { cluster_id: clusterId, scanner, report },
+        body: runtime
+          ? { cluster_id: clusterId, source: scanner, report }
+          : { cluster_id: clusterId, scanner, report },
       });
       setCreated(run);
       setReport(undefined);
@@ -133,6 +136,8 @@ export function ImportsPage({
                     <option value="trivy">Trivy — JSON-отчёт образа</option>
                     <option value="kube-bench">kube-bench — JSON</option>
                     <option value="kubescape">Kubescape — JSON</option>
+                    <option value="falco">Falco — JSON событий</option>
+                    <option value="tetragon">Tetragon — JSON событий</option>
                   </select>
                 </label>
                 <div className="file-upload file-upload-small">

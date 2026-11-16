@@ -1048,6 +1048,23 @@ class PinnedHTTP:
             "POST", url, body, "application/x-www-form-urlencoded", headers
         )
 
+    def delete_json(self, url, headers=None) -> dict:
+        return self._request("DELETE", url, headers=headers)
+
+    def patch_json(self, url, data: dict, headers=None) -> dict:
+        try:
+            if not isinstance(data, dict):
+                raise TypeError("Invalid JSON object")
+            body = json.dumps(data, separators=(",", ":"), allow_nan=False).encode(
+                "utf-8"
+            )
+            _json_object(body, MAX_REQUEST_BYTES)
+        except (ValueError, TypeError, UnicodeError, RecursionError):
+            raise _error("Invalid outbound request.", "http_request_invalid") from None
+        return self._request(
+            "PATCH", url, body, "application/strategic-merge-patch+json", headers
+        )
+
     def post_json(self, url, data: dict, headers=None) -> dict:
         try:
             if not isinstance(data, dict):

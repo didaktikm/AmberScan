@@ -65,7 +65,8 @@ from workbench.namespaces import (
     validate_run_scope,
 )
 from workbench.reports import render_report
-from workbench.rollout import parse_runtime_report, record_schedule, refuse_cluster_change
+from workbench.actions import queue_confirmed_action
+from workbench.rollout import parse_runtime_report, record_schedule
 from workbench.scanners import parse_report, preflight
 from workbench.security import (
     Vault,
@@ -166,8 +167,9 @@ class ScheduleInput(Input):
 
 
 class ProtectedActionInput(Input):
-    action: Literal["live_scanner", "extended", "operator", "remediate"]
+    action: Literal["live_scanner", "extended", "operator", "remediate", "continuous"]
     confirm: Literal[True]
+    finding_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
 class RuntimeImportInput(Input):
@@ -398,11 +400,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "features": [
                 {"id": "read_only", "title": "Разовый аудит только на чтение", "status": "available", "detail": "Kubernetes API: ограниченные встроенные проверки. Это не полный контрольный профиль."},
                 {"id": "imports", "title": "Импорт отчётов", "status": "available", "detail": "Trivy, kube-bench и Kubescape. Происхождение и область импорта не подтверждаются."},
-                {"id": "live_scanners", "title": "Запуск Kubescape и Trivy", "status": "not_implemented", "detail": "Бинарники не запускаются и не скачиваются. Подтверждение не начинает проверку."},
-                {"id": "scheduled", "title": "Периодический аудит", "status": "available", "detail": "Явное расписание только на чтение по сохранённой области: раз в сутки или не чаще чем раз в 6 часов. Нужна авторизация на 30 дней. Результаты старше 90 дней удаляются из приложения, не из кластера."},
-                {"id": "extended", "title": "Расширенные проверки", "status": "not_implemented", "detail": "Создание подов, проверки узлов и сетевые тесты не отправляются в кластер даже после подтверждения."},
-                {"id": "operator", "title": "Контроль из кластера", "status": "not_implemented", "detail": "Установка оператора не выполняется даже после подтверждения."},
-                {"id": "runtime", "title": "Наблюдение за средой выполнения", "status": "available", "detail": "Явный импорт JSON Falco и Tetragon. Агент не устанавливается, происхождение не подтверждается."},
+                {"id": "live_scanners", "title": "Запуск Kubescape и Trivy", "status": "available", "detail": "Запуск из закреплённых файлов образа. Файлы не скачиваются, сборщик узлов не включается."},
+                {"id": "scheduled", "title": "Периодический аудит", "status": "available", "detail": "Явное расписание только на чтение: раз в сутки или не чаще чем раз в 6 часов. Нужна авторизация на 30 дней. Результаты старше 90 дней удаляются из приложения."},
+                {"id": "extended", "title": "Расширенные проверки", "status": "available", "detail": "После явного подтверждения создаётся один непривилегированный временный под и удаляется. Узлы и сетевые политики читаются."},
+                {"id": "operator", "title": "Контроль из кластера", "status": "available", "detail": "После явного подтверждения ставится фиксированный оператор, который только читает API. Нужен образ с явным тегом."},
+                {"id": "runtime", "title": "Наблюдение за средой выполнения", "status": "available", "detail": "Явный импорт JSON Falco и Tetragon. Агент не устанавливается, команды и вывод отбрасываются."},
+                {"id": "continuous", "title": "Непрерывное наблюдение", "status": "available", "detail": "Повтор той же проверки только на чтение не чаще одного раза в 6 часов при авторизации на 30 дней."},
+                {"id": "remediate", "title": "Исправление ресурсов", "status": "available", "detail": "Одна встроенная находка контроллера за раз и только после подтверждения. Произвольный манифест не применяется."},
                 {"id": "team_sso", "title": "Единый вход в приложение", "status": "not_implemented", "detail": "Отложено до финальной версии. Пилот использует локальные учётные записи."},
             ],
             "setup_required": kubernetes_setup_required,
@@ -679,7 +683,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def protected_action(cluster_id: str, payload: ProtectedActionInput, user: CurrentUser, session=Depends(db)):
         role(user, SCAN_ROLES)
         cluster = permitted_cluster(session, user, cluster_id)
-        result = refuse_cluster_change(session, user, cluster, payload.action)
+        if payload.action == "continuous":
+            result = {
+                **record_schedule(session, user, cluster, "watch"),
+                "detail": "Включена повторная проверка только на чтение, не чаще чем раз в 6 часов. Кластер не изменяется.",
+            }
+        else:
+            result = queue_confirmed_action(session, vault, settings, user, cluster, payload.action, payload.finding_id)
         session.commit()
         return result
 

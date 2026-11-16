@@ -25,6 +25,7 @@ import {
   dispositionLabels,
   dispositionOptions,
   formatDate,
+  canScan,
   pretty,
   severityLabels,
   shortId,
@@ -63,6 +64,32 @@ export function FindingDialog({
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const options = dispositionOptions(user.role);
+  const canRemediate =
+    canScan(user.role) &&
+    ["Deployment", "StatefulSet", "DaemonSet"].includes(finding.resource_kind) &&
+    [
+      "builtin:privileged",
+      "builtin:privilege-escalation",
+      "builtin:root-user",
+      "builtin:host-namespaces",
+    ].includes(finding.rule_id);
+  async function remediate() {
+    setBusy(true);
+    setError(undefined);
+    setSuccess(false);
+    try {
+      await api(`/clusters/${encodeURIComponent(finding.cluster_id)}/protected-action`, {
+        method: "POST",
+        body: { action: "remediate", confirm: true, finding_id: finding.id },
+      });
+      setSuccess(true);
+      onChanged?.();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function update(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -162,6 +189,23 @@ export function FindingDialog({
               "Источник не предоставил рекомендацию. Проверьте правило и доказательства вручную."}
           </p>
         </section>
+        {canRemediate && (
+          <section className="form-stack">
+            <h3>Исправление в кластере</h3>
+            <p className="small muted">
+              Кнопка меняет шаблон этого контроллера. Другие ресурсы не
+              затрагиваются.
+            </p>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy}
+              onClick={() => void remediate()}
+            >
+              Применить исправление
+            </button>
+          </section>
+        )}
         <Notice tone="warning">
           Находка — наблюдение, а не статус устранения. Принятие риска не
           исправляет ресурс. Отсутствие находки в следующем запуске не закрывает

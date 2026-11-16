@@ -4,6 +4,8 @@ import base64
 import secrets
 from datetime import timedelta
 
+import pytest
+
 from sqlalchemy import func, select
 
 from workbench.config import Settings
@@ -23,6 +25,7 @@ from workbench.db import (
 )
 from workbench.domain import DomainError
 from workbench.migrations import init_database
+from workbench.actions import queue_confirmed_action
 from workbench.rollout import (
     enqueue_due_schedules,
     parse_runtime_report,
@@ -110,6 +113,30 @@ def test_schedule_queues_read_only_run_without_consuming_credential():
         assert run.scope["namespaces"] == ["demo"]
         assert session.get(ClusterCredential, (ids["user"], ids["cluster"])) is not None
         assert enqueue_due_schedules(session, vault, settings) == 0
+
+
+def test_confirmed_scanner_is_queued_without_touching_the_cluster():
+    settings, sessions, vault, ids = _world()
+    with sessions.begin() as session:
+        user = session.get(User, ids["user"])
+        cluster = session.get(Cluster, ids["cluster"])
+        result = queue_confirmed_action(session, vault, settings, user, cluster, "live_scanner")
+        assert result["changes_cluster"] is False
+        assert result["cluster_changed"] is False
+    with sessions.begin() as session:
+        run = session.scalar(select(Run))
+        assert run.source == "scanners"
+        assert run.status == "queued"
+
+
+def test_operator_is_not_queued_without_an_image():
+    settings, sessions, vault, ids = _world()
+    with sessions.begin() as session:
+        user = session.get(User, ids["user"])
+        cluster = session.get(Cluster, ids["cluster"])
+        with pytest.raises(DomainError) as exc:
+            queue_confirmed_action(session, vault, settings, user, cluster, "operator")
+        assert exc.value.code == "configuration_required"
 
 
 def test_protected_action_is_recorded_and_not_applied():

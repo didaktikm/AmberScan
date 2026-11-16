@@ -314,30 +314,19 @@ export function OverviewPage({
   );
 }
 
-const futureModes = [
-  {
-    title: "Непрерывное наблюдение",
-    detail:
-      "Поток всех изменений и установка агентов не делаются. Повторная проверка только на чтение включается отдельно на кластере и не меняет его.",
-  },
-  {
-    title: "Исправление ресурсов",
-    detail:
-      "Манифесты, команды в контейнерах и автоправки не отправляются в кластер даже после подтверждения.",
-  },
-  {
-    title: "Запуск внешних сканеров",
-    detail:
-      "Kubescape, Trivy и kube-bench не скачиваются и не запускаются. Подтверждение не начинает проверку. Импорт их JSON по-прежнему доступен.",
-  },
-];
+function isImplemented(status: string) {
+  return status === "implemented" || status === "available";
+}
 export function ModesPage() {
   const resource = useResource<Capabilities>("/capabilities");
+  const features = resource.data?.features ?? [];
+  const implemented = features.filter((feature) => isImplemented(feature.status));
+  const missing = features.filter((feature) => !isImplemented(feature.status));
   return (
     <>
       <PageHeader
         title="Возможности и ограничения"
-        description="Доступность функций определяется сервером. Будущие режимы не выдают результаты проверок."
+        description="Сервер отделяет доступные функции от тех, которые ещё не реализованы."
       />
       <ErrorBox message={resource.error} retry={resource.reload} />
       {resource.loading && !resource.data ? (
@@ -349,20 +338,49 @@ export function ModesPage() {
               <h2>Состояние функций в версии {resource.data.version}</h2>
               <span className="muted">Ответ /api/capabilities</span>
             </div>
-            {resource.data.features.length ? (
-              <div className="mode-grid">
-                {resource.data.features.map((feature) => (
-                  <article key={feature.id} className="mode-card">
-                    <div className="mode-icon">
-                      <ScanLine size={23} />
+            {features.length ? (
+              <>
+                {implemented.length > 0 && (
+                  <>
+                    <div className="section-heading">
+                      <h2>Доступно</h2>
+                      <span className="muted">{implemented.length}</span>
                     </div>
-                    <Badge value={feature.status} />
-                    <h3>{feature.title}</h3>
-                    <p>{feature.detail}</p>
-                    <code>{feature.id}</code>
-                  </article>
-                ))}
-              </div>
+                    <div className="mode-grid">
+                      {implemented.map((feature) => (
+                        <article key={feature.id} className="mode-card">
+                          <div className="mode-icon">
+                            <ScanLine size={23} />
+                          </div>
+                          <Badge value={feature.status} />
+                          <h3>{feature.title}</h3>
+                          <p>{feature.detail}</p>
+                          <code>{feature.id}</code>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {missing.length > 0 && (
+                  <>
+                    <div className="section-heading">
+                      <h2>Не реализовано</h2>
+                      <span className="muted">Недоступно для запуска</span>
+                    </div>
+                    <div className="mode-grid mode-grid-future">
+                      {missing.map((feature) => (
+                        <article key={feature.id} className="mode-card">
+                          <ShieldOff size={23} />
+                          <Badge value={feature.status} />
+                          <h3>{feature.title}</h3>
+                          <p>{feature.detail}</p>
+                          <code>{feature.id}</code>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
             ) : (
               <Notice>
                 Сервер не опубликовал список возможностей. Доступность проверок
@@ -393,20 +411,6 @@ export function ModesPage() {
           </>
         )
       )}
-      <div className="section-heading">
-        <h2>Не реализовано</h2>
-        <span className="muted">Не доступно для запуска</span>
-      </div>
-      <div className="mode-grid mode-grid-future">
-        {futureModes.map((mode) => (
-          <article className="mode-card" key={mode.title}>
-            <ShieldOff size={23} />
-            <Badge value="not_implemented" />
-            <h3>{mode.title}</h3>
-            <p>{mode.detail}</p>
-          </article>
-        ))}
-      </div>
       <Notice>
         Совместимость с конкретным кластером этим интерфейсом не
         подтверждается. Загруженный kubeconfig не означает, что проверка
