@@ -94,7 +94,7 @@ def create_draft(session, user, *, name, environment, connection, auth_type="kub
     if user.role != "administrator" or not user.active:
         raise DomainError("Недостаточно прав приложения", "forbidden")
     if auth_type != "kubeconfig" or connection["kind"] != "kubeconfig":
-        raise DomainError("Требуется kubeconfig со встроенными credentials", "invalid_input")
+        raise DomainError("Требуется kubeconfig со встроенным токеном или клиентским сертификатом", "invalid_input")
     extracted = extracted or extract_kubeconfig_credentials(connection["content"], connection["context"])
     metadata = extracted["metadata"]
     # Pure metadata validation: never DNS, kubeconfig commands, tokens or HTTP here.
@@ -220,7 +220,7 @@ class ConnectionProbe:
         if self.expected_revision is not None and cluster.auth_generation != self.expected_revision:
             raise DomainError("Доступ уже изменён; обновите данные", "conflict")
         if self.namespaces is not None and cluster.lifecycle == "ready" and not self.scope_edit and not set(self.namespaces) <= set(cluster.namespaces):
-            raise DomainError("Namespace вне разрешённой области", "forbidden")
+            raise DomainError("Пространство имён вне разрешённой области", "forbidden")
         credential = session.scalar(select(ClusterCredential).where(ClusterCredential.user_id == self.user_id, ClusterCredential.cluster_id == self.cluster_id).with_for_update().execution_options(populate_existing=True))
         connection = credential_for(session, self.vault, cluster, user, session_hash=self.session_hash)
         revisions = authorization_values(cluster, policy, binding)
@@ -253,7 +253,7 @@ class ConnectionProbe:
                 raise ValueError
             expiry = datetime.fromisoformat(data["expires_at"])
             if aware(expiry) <= now():
-                raise DomainError("Снимок namespaces истёк; обновите список", "namespace_snapshot_expired")
+                raise DomainError("Снимок списка пространств имён истёк; обновите список", "namespace_snapshot_expired")
             return data
         except (KeyError, TypeError, ValueError):
             raise DomainError("Продолжение списка недействительно; обновите список", "invalid_namespace_continuation") from None
@@ -287,7 +287,7 @@ class ConnectionProbe:
                 ):
                     raise ValueError
             except (ValueError, UnicodeError):
-                raise DomainError("Недопустимый запрос discovery", "scope_denied") from None
+                raise DomainError("Недопустимый запрос списка пространств имён", "scope_denied") from None
         else:
             validate_inventory_url(url, connection["server"], self.namespaces)
         identity = connection_tls(connection)
@@ -315,13 +315,13 @@ def require_preflight_success(coverage, namespaces, *, accept_partial: bool) -> 
         or any(not isinstance(row, dict) or not isinstance(row.get("check"), str) for row in coverage)
         or {row.get("check") for row in coverage} != expected
     ):
-        raise DomainError("Preflight не подтвердил выбранную область", "preflight_failed")
+        raise DomainError("Проверка доступа не подтвердила выбранную область", "preflight_failed")
     if any(row.get("code") == "http_401" for row in coverage):
         raise DomainError("Kubernetes отклонил личную авторизацию; авторизуйтесь снова", "kubernetes_authentication_required")
     if any(
         not ((row.get("code") == "allowed" and row.get("status") == "completed") or (row.get("code") == "http_403" and row.get("status") == "denied"))
         for row in coverage
     ) or not any(row.get("code") == "allowed" for row in coverage):
-        raise DomainError("Preflight не подтвердил выбранную область", "preflight_failed")
+        raise DomainError("Проверка доступа не подтвердила выбранную область", "preflight_failed")
     if any(row.get("code") == "http_403" for row in coverage) and not accept_partial:
         raise DomainError("Подтвердите сохранение области с отказами RBAC (403)", "preflight_partial")

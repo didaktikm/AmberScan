@@ -142,7 +142,7 @@ export function ClusterDetail({
             [
               "Личный доступ в приложении до",
               revoked
-                ? "Удалена из консоли"
+                ? "Удалён из консоли"
                 : formatDate(cluster.credential_expires_at),
             ],
             [

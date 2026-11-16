@@ -249,7 +249,7 @@ def discover_namespaces(connection: dict, http, *, continuation=None, seal_conti
 
     for _ in range(DISCOVERY_MAX_PAGES):
         if time.monotonic() >= deadline:
-            return partial("Namespace discovery reached its 30-second deadline; the list is incomplete.")
+            return partial("Список пространств имён не получен целиком: истёк лимит 30 секунд.")
         query = {"limit": DISCOVERY_PAGE_SIZE}
         if cursor:
             query["continue"] = cursor
@@ -286,7 +286,7 @@ def discover_namespaces(connection: dict, http, *, continuation=None, seal_conti
                     "status": "forbidden",
                     "items": [],
                     "complete": False,
-                    "limitation": "Namespace discovery is forbidden; enter explicit namespace names manually.",
+                    "limitation": "Получение списка пространств имён запрещено; введите известные имена вручную.",
                     "continuation": None,
                 }
             _discovery_failure(error)
@@ -306,8 +306,8 @@ def discover_namespaces(connection: dict, http, *, continuation=None, seal_conti
         if not cursor:
             return _discovery_result(items)
         if time.monotonic() >= deadline:
-            return partial("Namespace discovery reached its 30-second deadline; the list is incomplete.")
+            return partial("Список пространств имён не получен целиком: истёк лимит 30 секунд.")
         if len(items) >= DISCOVERY_MAX_NAMES:
             break
         seen_cursors.add(cursor)
-    return partial("Namespace discovery reached its 1000-name or 5-page limit; load more to continue.")
+    return partial("Список ограничен 1000 именами или 5 страницами; загрузите продолжение.")

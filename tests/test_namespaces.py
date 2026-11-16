@@ -317,7 +317,7 @@ def test_discovery_forbidden_returns_empty_manual_fallback_without_partial_autho
     http = FakeHTTP(*responses, DomainError(CANARY, "http_403"))
     result = discover_namespaces(CONNECTION, http)
     assert result["status"] == "forbidden" and not result["complete"]
-    assert result["items"] == [] and "manually" in result["limitation"]
+    assert result["items"] == [] and "вручную" in result["limitation"]
     assert CANARY not in json.dumps(result)
 
 
@@ -480,7 +480,7 @@ def test_discovery_deadline_is_shared_with_fresh_pinned_clients_and_stops_reques
     result = discover_namespaces(CONNECTION, http)
     assert result["status"] == "partial" and not result["complete"]
     assert result["items"] == [{"name": "demo", "system": False}]
-    assert "deadline" in result["limitation"] and len(http.calls) == 1
+    assert "30 секунд" in result["limitation"] and len(http.calls) == 1
     assert security._REQUEST_DEADLINE.get() is None
 
 
