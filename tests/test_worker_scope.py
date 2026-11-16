@@ -217,9 +217,12 @@ def test_tick_commits_cascading_cleanup_before_run_recovery(monkeypatch):
     runner.sessions = SimpleNamespace(begin=begin)
     monkeypatch.setattr(runner, "settings", SimpleNamespace(lease_seconds=60), raising=False)
     runner.id = "synthetic-worker"
+    runner.vault = None
     monkeypatch.setattr(worker, "require_runtime_schema", lambda session: calls.append((session.number, "schema")))
     monkeypatch.setattr(worker, "cleanup_expired_drafts", lambda session: calls.append((session.number, "drafts")))
     monkeypatch.setattr(worker, "cleanup_expired_authorizations", lambda session: calls.append((session.number, "auth")))
+    monkeypatch.setattr(worker, "purge_expired_results", lambda session, **_kwargs: calls.append((session.number, "retention")))
+    monkeypatch.setattr(worker, "enqueue_due_schedules", lambda session, *_args: calls.append((session.number, "schedule")))
     monkeypatch.setattr(worker, "recover", lambda session: calls.append((session.number, "runs")))
     monkeypatch.setattr(worker, "claim", lambda session, *_: calls.append((session.number, "claim")))
     monkeypatch.setattr(runner, "pulse", lambda session, _: calls.append((session.number, "pulse")))
@@ -227,8 +230,10 @@ def test_tick_commits_cascading_cleanup_before_run_recovery(monkeypatch):
     assert calls == [
         (1, "begin"), (1, "schema"), (1, "drafts"), (1, "commit"),
         (2, "begin"), (2, "schema"), (2, "auth"), (2, "commit"),
-        (3, "begin"), (3, "schema"), (3, "runs"), (3, "pulse"),
-        (3, "claim"), (3, "commit"),
+        (3, "begin"), (3, "schema"), (3, "retention"), (3, "commit"),
+        (4, "begin"), (4, "schema"), (4, "schedule"), (4, "commit"),
+        (5, "begin"), (5, "schema"), (5, "runs"), (5, "pulse"),
+        (5, "claim"), (5, "commit"),
     ]
 
 

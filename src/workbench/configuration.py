@@ -328,6 +328,14 @@ class PolicyHTTP:
         transport, _ = self._transport(url)
         return transport.post_json(url, data, headers=headers)
 
+    def delete_json(self, url: str, headers=None) -> dict:
+        transport, _ = self._transport(url)
+        return transport.delete_json(url, headers=headers)
+
+    def patch_json(self, url: str, data: dict, headers=None) -> dict:
+        transport, _ = self._transport(url)
+        return transport.patch_json(url, data, headers=headers)
+
 
 def policy_http(
     session,

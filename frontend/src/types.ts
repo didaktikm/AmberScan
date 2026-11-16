@@ -10,7 +10,7 @@ export interface Session {
   reauthenticated_until?: string | null;
 }
 export type AuthType = "kubeconfig";
-export type StorageMode = "run_only" | "persistent";
+export type StorageMode = "run_only" | "persistent" | "days_30";
 export interface EgressRule {
   id: string;
   purpose: "kubernetes" | "registry" | "database";

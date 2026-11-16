@@ -54,6 +54,23 @@ export function AuthorizationChoice({
           </small>
         </span>
       </label>
+      <label className="checkbox-label">
+        <input
+          type="radio"
+          name="authorization-storage"
+          checked={value === "days_30"}
+          onChange={() => onChange("days_30")}
+          value="days_30"
+        />
+        <span>
+          <strong>Сохранить на сервере — 30 дней</strong>
+          <small>
+            Отдельное согласие для повторных проверок и расписания. Кластер
+            при этом не изменяется. Срок не продлевается сам и не длиннее
+            исходных учётных данных.
+          </small>
+        </span>
+      </label>
       <p className="small muted">
         Это срок личного доступа в приложении, не подтверждённый срок действия
         токена Kubernetes. Срок сертификата или исходных учётных данных может

@@ -116,6 +116,8 @@ describe("Russian display copy preserves technical data", () => {
     expect(authorization).toContain("Учётные данные не сохраняются в браузере");
     expect(authorization).toContain('value="run_only"');
     expect(authorization).toContain('value="persistent"');
+    expect(authorization).toContain('value="days_30"');
+    expect(authorization).toContain("30 дней");
 
     const wizard = renderToStaticMarkup(
       <ClusterWizard

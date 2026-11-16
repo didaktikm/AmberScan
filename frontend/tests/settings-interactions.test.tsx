@@ -577,6 +577,43 @@ describe("B1 real frontend state, isolated API fixtures", () => {
     expect(container.textContent).toContain("Состояние функций в версии test");
     expect(container.textContent).not.toContain("Доступно в версии");
     expect(container.textContent).toContain("Недоступно");
+    expect(container.textContent).not.toContain("Реализовано");
+  });
+  test("Modes splits the two implemented capabilities from the rest", async () => {
+    handler = () =>
+      json({
+        version: "0.5.0",
+        features: [
+          {
+            id: "read_only",
+            title: "Разовый аудит только на чтение",
+            status: "available",
+            detail: "Встроенные проверки",
+          },
+          {
+            id: "imports",
+            title: "Импорт отчётов",
+            status: "available",
+            detail: "Готовые JSON",
+          },
+          {
+            id: "scheduled",
+            title: "Периодический аудит",
+            status: "not_implemented",
+            detail: "Не запускается",
+          },
+        ],
+        limits: { list_rows: 500 },
+      });
+    await mount(<ModesPage />);
+    const text = container.textContent ?? "";
+    const done = text.indexOf("Доступно");
+    const pending = text.indexOf("Не реализовано");
+    expect(done).toBeGreaterThan(-1);
+    expect(pending).toBeGreaterThan(done);
+    expect(text.indexOf("Разовый аудит только на чтение")).toBeLessThan(pending);
+    expect(text.indexOf("Импорт отчётов")).toBeLessThan(pending);
+    expect(text.indexOf("Периодический аудит")).toBeGreaterThan(pending);
   });
 });
 

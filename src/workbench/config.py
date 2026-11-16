@@ -35,6 +35,9 @@ class Settings:
     retention_days: int = 90
     # Optional immutable ceiling; None allows explicit administrator configuration.
     egress_ceiling: list[dict] | None = None
+    trivy_path: str | None = None
+    kubescape_path: str | None = None
+    operator_image: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -86,4 +89,31 @@ class Settings:
             web_dist_dir=os.environ.get("WEB_DIST_DIR", "frontend/dist"),
             retention_days=int(config.get("retention_days", 90)),
             egress_ceiling=ceiling,
+            trivy_path=_optional_absolute("WORKBENCH_TRIVY_BIN"),
+            kubescape_path=_optional_absolute("WORKBENCH_KUBESCAPE_BIN"),
+            operator_image=_optional_image("WORKBENCH_OPERATOR_IMAGE"),
         )
+
+
+def _optional_absolute(variable: str) -> str | None:
+    value = os.environ.get(variable, "").strip()
+    if not value:
+        return None
+    if not value.startswith("/") or ".." in Path(value).parts:
+        raise DomainError("Недопустимый путь закреплённого файла", "configuration_required")
+    return value
+
+
+def _optional_image(variable: str) -> str | None:
+    value = os.environ.get(variable, "").strip()
+    if not value:
+        return None
+    if (
+        len(value) > 200
+        or value.endswith(":latest")
+        or ".." in value
+        or any(char.isspace() for char in value)
+        or (":" not in value and "@" not in value)
+    ):
+        raise DomainError("Нужен образ с явным тегом, не latest", "configuration_required")
+    return value

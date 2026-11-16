@@ -487,6 +487,24 @@ def test_cluster_creation_defaults_and_encrypted_kubeconfig_credential(
     workbench.http.get_json.assert_not_called()
 
 
+def test_capabilities_publish_the_confirmed_actions(workbench):
+    login(workbench.client)
+    features = workbench.client.get("/api/capabilities").json()["features"]
+    available = [item["id"] for item in features if item["status"] == "available"]
+    assert available == [
+        "read_only",
+        "imports",
+        "live_scanners",
+        "scheduled",
+        "extended",
+        "operator",
+        "runtime",
+        "continuous",
+        "remediate",
+    ]
+    assert [item["id"] for item in features if item["status"] == "not_implemented"] == ["team_sso"]
+
+
 def test_viewer_read_only_and_administrator_only_routes(
     workbench, clusters, kubeconfig
 ):
