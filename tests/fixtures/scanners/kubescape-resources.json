@@ -1,0 +1,15 @@
+{
+  "metadata": {"toolVersion": "3.0.1", "clusterName": "unverified-cluster", "token": "fixture-metadata-secret"},
+  "resources": [{
+    "resourceID": "apps/v1/Deployment/demo/api",
+    "object": {"kind": "Deployment", "metadata": {"name": "api", "namespace": "demo", "uid": "11111111-2222-3333-4444-555555555555", "annotations": {"fixture": "fixture-annotation-secret"}}, "spec": {"template": {"spec": {"containers": [{"name": "api", "env": [{"name": "PASSWORD", "value": "fixture-env-secret"}]}]}}}}
+  }],
+  "results": [{
+    "resourceID": "apps/v1/Deployment/demo/api",
+    "controls": [
+      {"controlID": "C-0001", "name": "<script>fixture-xss</script>", "severity": "HIGH", "status": {"status": "failed", "reason": "fixture-reason-secret"}, "rules": [{"name": "fixture-rule-secret", "paths": [{"failedPath": "spec.env.PASSWORD", "fixPathValue": "fixture-fix-secret"}]}]},
+      {"controlID": "C-0002", "severity": "LOW", "status": {"status": "passed"}, "rules": []},
+      {"controlID": "C-0003", "status": {"status": "skipped"}, "rules": []}
+    ]
+  }]
+}

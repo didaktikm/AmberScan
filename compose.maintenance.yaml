@@ -1,0 +1,37 @@
+services:
+  maintenance:
+    image: amberdata-workbench-maintenance:0.5.0-local
+    build:
+      context: .
+      target: maintenance
+    profiles: [maintenance]
+    user: "${WORKBENCH_UID:-10001}:${WORKBENCH_GID:-10001}"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment:
+      WORKBENCH_DATABASE_URL_FILE: /run/secrets/database-url
+      WORKBENCH_MASTER_KEY_FILE: /run/secrets/master-key
+      WORKBENCH_CONFIG_FILE: /app/config.json
+    secrets: [database-url, master-key]
+    volumes:
+      - type: bind
+        source: ${WORKBENCH_LOCAL_DIR:-./.local}/config.json
+        target: /app/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKBENCH_BACKUP_DIR:-./backups}
+        target: /backups
+        bind:
+          create_host_path: false
+    networks: [database]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 64
+    ulimits:
+      core: 0

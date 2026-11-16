@@ -1,0 +1,28 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "api",
+    "namespace": "demo",
+    "uid": "11111111-2222-3333-4444-555555555555",
+    "annotations": {"last-applied": "fixture-full-manifest-secret"},
+    "labels": {"fixture": "<script>fixture-xss</script>"}
+  },
+  "spec": {
+    "hostPID": true,
+    "hostNetwork": true,
+    "securityContext": {"runAsUser": 0, "runAsNonRoot": false, "sysctls": [{"name": "fixture-private-sysctl", "value": "fixture-private-value"}]},
+    "containers": [{
+      "name": "api",
+      "image": "registry.example.test/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "securityContext": {"privileged": true, "allowPrivilegeEscalation": true, "seLinuxOptions": {"user": "fixture-private-user"}},
+      "env": [{"name": "PASSWORD", "value": "fixture-env-secret"}],
+      "command": ["sh", "-c", "fixture-command-secret"],
+      "args": ["fixture-argument-secret"],
+      "volumeMounts": [{"name": "fixture-volume-secret", "mountPath": "/private"}]
+    }],
+    "volumes": [{"name": "fixture-volume-secret", "secret": {"secretName": "fixture-secret-name"}}],
+    "imagePullSecrets": [{"name": "fixture-image-pull-secret"}]
+  },
+  "status": {"containerStatuses": [{"state": {"terminated": {"message": "fixture-runtime-secret"}}}]}
+}
