@@ -73,6 +73,7 @@ export function ClusterDetail({
   );
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [revoking, setRevoking] = useState<"personal" | "all">();
   const [revoked, setRevoked] = useState<"personal" | "all">();
   const valid =
@@ -109,6 +110,50 @@ export function ClusterDetail({
       if (attempt === actionGeneration.current) setBusy(undefined);
     }
   }
+  async function chooseSchedule(kind: "periodic" | "watch" | "off") {
+    const attempt = ++actionGeneration.current;
+    setBusy("schedule");
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      await api(`/clusters/${encodeURIComponent(cluster.id)}/schedule`, {
+        method: "POST",
+        body: { kind, confirm: true },
+      });
+      if (attempt !== actionGeneration.current) return;
+      setNotice(
+        kind === "off"
+          ? "Расписание остановлено. Кластер не изменялся."
+          : "Включена повторная проверка только на чтение. Кластер не изменяется.",
+      );
+    } catch (reason) {
+      if (attempt !== actionGeneration.current) return;
+      setError(errorText(reason));
+    } finally {
+      if (attempt === actionGeneration.current) setBusy(undefined);
+    }
+  }
+  async function confirmProtected(
+    action: "live_scanner" | "extended" | "operator" | "remediate",
+  ) {
+    const attempt = ++actionGeneration.current;
+    setBusy(action);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await api<{ detail: string }>(
+        `/clusters/${encodeURIComponent(cluster.id)}/protected-action`,
+        { method: "POST", body: { action, confirm: true } },
+      );
+      if (attempt !== actionGeneration.current) return;
+      setNotice(result.detail);
+    } catch (reason) {
+      if (attempt !== actionGeneration.current) return;
+      setError(errorText(reason));
+    } finally {
+      if (attempt === actionGeneration.current) setBusy(undefined);
+    }
+  }
   return (
     <Modal
       wide
@@ -137,7 +182,9 @@ export function ClusterDetail({
                   ? "На один запуск в этой локальной сессии"
                   : cluster.storage_mode === "persistent"
                     ? "На сервере до истечения срока или отзыва"
-                    : "Не передано сервером",
+                    : cluster.storage_mode === "days_30"
+                      ? "На сервере 30 дней или до отзыва"
+                      : "Не передано сервером",
             ],
             [
               "Личный доступ в приложении до",
@@ -195,6 +242,68 @@ export function ClusterDetail({
           Авторизация личная: учётные данные не передаются другим участникам
           команды. Для каждого пользователя требуется отдельный импорт.
         </Notice>
+        {notice && <Notice tone="success">{notice}</Notice>}
+        {canScan(user.role) && cluster.lifecycle === "ready" && (
+          <section className="form-stack">
+            <h3>Повторные проверки</h3>
+            <p className="small muted">
+              Только чтение сохранённой области. Кластер не изменяется. Нужна
+              авторизация на 30 дней: раз в сутки или не чаще чем раз в 6
+              часов.
+            </p>
+            <div className="button-row">
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!!busy}
+                onClick={() => chooseSchedule("periodic")}
+              >
+                Раз в сутки
+              </button>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!!busy}
+                onClick={() => chooseSchedule("watch")}
+              >
+                Каждые 6 часов
+              </button>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!!busy}
+                onClick={() => chooseSchedule("off")}
+              >
+                Остановить
+              </button>
+            </div>
+            <h3>Действия, которые изменили бы кластер</h3>
+            <p className="small muted">
+              Подтверждение только записывается. Запрос в кластер не
+              отправляется.
+            </p>
+            <div className="button-row">
+              {(
+                [
+                  ["live_scanner", "Сканеры"],
+                  ["extended", "Расширенные"],
+                  ["operator", "Оператор"],
+                  ["remediate", "Исправление"],
+                ] as const
+              ).map(([action, label]) => (
+                <button
+                  key={action}
+                  type="button"
+                  className="button button-secondary"
+                  disabled={!!busy}
+                  onClick={() => confirmProtected(action)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {!valid && (
           <Notice tone="warning">
             Ваша действующая авторизация не подтверждена. Повторно импортируйте

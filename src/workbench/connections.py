@@ -121,15 +121,13 @@ def create_draft(session, user, *, name, environment, connection, auth_type="kub
 
 def store_kubeconfig_credential(session, vault, user, web_session, cluster, extracted, storage_mode, revisions):
     """Store selected normalized auth only; caller owns locks and atomic commit."""
-    if storage_mode not in {"run_only", "persistent"}:
-        raise DomainError("Недопустимый режим хранения", "invalid_input")
-    expiry = now() + timedelta(hours=1 if storage_mode == "run_only" else 24)
-    if storage_mode == "run_only":
-        expiry = min(expiry, aware(web_session.expires_at))
-    if extracted["source_expires_at"] is not None:
-        expiry = min(expiry, aware(extracted["source_expires_at"]))
-    if expiry <= now():
-        raise DomainError("Срок личной авторизации истёк; импортируйте kubeconfig снова", "authorization_required")
+    from workbench.rollout import storage_deadline
+
+    expiry = storage_deadline(
+        storage_mode,
+        session_expires_at=web_session.expires_at,
+        source_expires_at=extracted["source_expires_at"],
+    )
     connection_headers({"auth_type": "kubeconfig", "auth": extracted["auth"]})
     session.add(ClusterCredential(
         user_id=user.id, cluster_id=cluster.id,

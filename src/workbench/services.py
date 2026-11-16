@@ -101,7 +101,7 @@ def credential_valid(session, cluster, user, credential, session_hash=None, mini
         and user.role in SCAN_ROLES
         and aware(credential.expires_at) > now() + timedelta(seconds=minimum_seconds)
         and (
-            (credential.storage_mode == "persistent" and credential.session_hash is None)
+            (credential.storage_mode in {"persistent", "days_30"} and credential.session_hash is None)
             or (credential.storage_mode == "run_only" and session_hash is not None and credential.session_hash == session_hash)
         )
         and authorization_current(session, cluster, user.id, credential)

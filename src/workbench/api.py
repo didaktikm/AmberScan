@@ -65,6 +65,7 @@ from workbench.namespaces import (
     validate_run_scope,
 )
 from workbench.reports import render_report
+from workbench.rollout import parse_runtime_report, record_schedule, refuse_cluster_change
 from workbench.scanners import parse_report, preflight
 from workbench.security import (
     Vault,
@@ -129,13 +130,13 @@ class DraftInput(Input):
     name: str = Field(min_length=1, max_length=120)
     environment: str = Field(default="test", min_length=1, max_length=50)
     auth_type: Literal["kubeconfig"] = "kubeconfig"
-    storage_mode: Literal["run_only", "persistent"] = "run_only"
+    storage_mode: Literal["run_only", "persistent", "days_30"] = "run_only"
     connection: KubeconfigConnection
 
 
 class CredentialInput(KubeconfigInput):
     context: str = Field(min_length=1, max_length=250)
-    storage_mode: Literal["run_only", "persistent"] = "run_only"
+    storage_mode: Literal["run_only", "persistent", "days_30"] = "run_only"
     expected_access_revision: int = Field(ge=0, strict=True)
 
 
@@ -156,6 +157,22 @@ class RunInput(Scope):
 class ImportInput(Input):
     cluster_id: str = Field(max_length=36)
     scanner: Literal["trivy", "kube-bench", "kubescape"]
+    report: dict
+
+
+class ScheduleInput(Input):
+    kind: Literal["periodic", "watch", "off"]
+    confirm: Literal[True]
+
+
+class ProtectedActionInput(Input):
+    action: Literal["live_scanner", "extended", "operator", "remediate"]
+    confirm: Literal[True]
+
+
+class RuntimeImportInput(Input):
+    cluster_id: str = Field(max_length=36)
+    source: Literal["falco", "tetragon"]
     report: dict
 
 
@@ -381,12 +398,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "features": [
                 {"id": "read_only", "title": "Разовый аудит только на чтение", "status": "available", "detail": "Kubernetes API: ограниченные встроенные проверки. Это не полный контрольный профиль."},
                 {"id": "imports", "title": "Импорт отчётов", "status": "available", "detail": "Trivy, kube-bench и Kubescape. Происхождение и область импорта не подтверждаются."},
-                {"id": "live_scanners", "title": "Запуск Kubescape и Trivy", "status": "not_implemented", "detail": "Нужны проверенные версии среды выполнения и реальные тесты адаптеров."},
-                {"id": "scheduled", "title": "Периодический аудит", "status": "not_implemented", "detail": "Следующий этап; автоматическое обновление учётных данных не реализовано."},
-                {"id": "extended", "title": "Расширенные проверки", "status": "not_implemented", "detail": "Создание подов, сканирование узлов и сетевые тесты отключены."},
-                {"id": "operator", "title": "Контроль из кластера", "status": "not_implemented", "detail": "Установка и чтение операторов не реализованы."},
-                {"id": "runtime", "title": "Наблюдение за средой выполнения", "status": "not_implemented", "detail": "Falco и Tetragon — отдельный последующий этап."},
-                {"id": "team_sso", "title": "Единый вход в приложение", "status": "not_implemented", "detail": "Пилот использует локальные учётные записи и не готов к командной эксплуатации."},
+                {"id": "live_scanners", "title": "Запуск Kubescape и Trivy", "status": "not_implemented", "detail": "Бинарники не запускаются и не скачиваются. Подтверждение не начинает проверку."},
+                {"id": "scheduled", "title": "Периодический аудит", "status": "available", "detail": "Явное расписание только на чтение по сохранённой области: раз в сутки или не чаще чем раз в 6 часов. Нужна авторизация на 30 дней. Результаты старше 90 дней удаляются из приложения, не из кластера."},
+                {"id": "extended", "title": "Расширенные проверки", "status": "not_implemented", "detail": "Создание подов, проверки узлов и сетевые тесты не отправляются в кластер даже после подтверждения."},
+                {"id": "operator", "title": "Контроль из кластера", "status": "not_implemented", "detail": "Установка оператора не выполняется даже после подтверждения."},
+                {"id": "runtime", "title": "Наблюдение за средой выполнения", "status": "available", "detail": "Явный импорт JSON Falco и Tetragon. Агент не устанавливается, происхождение не подтверждается."},
+                {"id": "team_sso", "title": "Единый вход в приложение", "status": "not_implemented", "detail": "Отложено до финальной версии. Пилот использует локальные учётные записи."},
             ],
             "setup_required": kubernetes_setup_required,
             "kubernetes_setup_required": kubernetes_setup_required,
@@ -647,6 +664,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session.flush()
         save_result(session, run, result)
         audit(session, user.username, "report_imported", run.id, scanner=payload.scanner)
+        session.commit()
+        return run_view(session, run, details=True)
+
+    @app.post("/api/clusters/{cluster_id}/schedule")
+    def set_schedule(cluster_id: str, payload: ScheduleInput, user: CurrentUser, session=Depends(db)):
+        role(user, SCAN_ROLES)
+        cluster = permitted_cluster(session, user, cluster_id)
+        result = record_schedule(session, user, cluster, payload.kind)
+        session.commit()
+        return result
+
+    @app.post("/api/clusters/{cluster_id}/protected-action")
+    def protected_action(cluster_id: str, payload: ProtectedActionInput, user: CurrentUser, session=Depends(db)):
+        role(user, SCAN_ROLES)
+        cluster = permitted_cluster(session, user, cluster_id)
+        result = refuse_cluster_change(session, user, cluster, payload.action)
+        session.commit()
+        return result
+
+    @app.post("/api/runtime-imports", status_code=201)
+    def import_runtime(payload: RuntimeImportInput, user: CurrentUser, session=Depends(db)):
+        role(user, SCAN_ROLES)
+        cluster = permitted_cluster(session, user, payload.cluster_id)
+        result = parse_runtime_report(payload.source, payload.report)
+        session.execute(select(Cluster.id).where(Cluster.id == cluster.id).with_for_update())
+        run = Run(id=uid(), cluster_id=cluster.id, actor_id=user.id, status="running", stage="normalize", scope={"namespaces": [], "verified": False}, source=f"import:{payload.source}", started_at=now())
+        session.add(run)
+        session.flush()
+        save_result(session, run, result)
+        audit(session, user.username, "runtime_imported", run.id, source=payload.source)
         session.commit()
         return run_view(session, run, details=True)
 

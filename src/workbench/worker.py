@@ -27,6 +27,7 @@ from workbench.db import (
 from workbench.domain import DomainError
 from workbench.migrations import require_runtime_schema
 from workbench.namespaces import validate_inventory_url, validate_run_scope
+from workbench.rollout import enqueue_due_schedules, purge_expired_results
 from workbench.scanners import scan_inventory
 from workbench.security import Vault, connection_headers, connection_tls
 from workbench.services import (
@@ -271,6 +272,12 @@ class Runner:
         with self.sessions.begin() as session:
             require_runtime_schema(session)
             cleanup_expired_authorizations(session)
+        with self.sessions.begin() as session:
+            require_runtime_schema(session)
+            purge_expired_results(session, retention_days=getattr(self.settings, "retention_days", 90))
+        with self.sessions.begin() as session:
+            require_runtime_schema(session)
+            enqueue_due_schedules(session, self.vault, self.settings)
         with self.sessions.begin() as session:
             require_runtime_schema(session)
             recover(session)
