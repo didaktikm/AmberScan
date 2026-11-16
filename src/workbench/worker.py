@@ -148,7 +148,7 @@ def recover(session) -> int:
     rows = list(session.scalars(select(Run).where(Run.status == "running", Run.lease_until < now()).with_for_update(skip_locked=True)))
     for run in rows:
         run.status, run.stage = "interrupted", "cleanup"
-        run.error = "Worker lease истёк. Запуск не повторяется автоматически."
+        run.error = "Истекло время владения запуском. Проверка не повторяется автоматически."
         run.finished_at, run.credential, run.lease_until = now(), None, None
         audit(session, "worker", "run_interrupted", run.id)
     return len(rows)
@@ -181,16 +181,16 @@ class Runner:
 
     def finish_error(self, run_id: str, code: str) -> None:
         messages = {
-            "cancelled": "Запуск отменён; процесс сборщика остановлен, credentials очищены.",
+            "cancelled": "Запуск отменён; процесс сборщика остановлен, учётные данные очищены.",
             "timeout": "Превышен лимит времени; процесс сборщика остановлен.",
             "authorization_required": "Требуется повторная авторизация подключения: импортируйте kubeconfig.",
-            "kubernetes_authentication_required": "Kubernetes отклонил credentials; авторизуйте подключение повторно.",
-            "http_401": "Kubernetes отклонил credentials; авторизуйте подключение повторно.",
+            "kubernetes_authentication_required": "Kubernetes отклонил учётные данные; импортируйте kubeconfig снова.",
+            "http_401": "Kubernetes отклонил учётные данные; импортируйте kubeconfig снова.",
             "forbidden": "Полномочия пользователя изменились; запуск остановлен.",
             "scope_changed": "Область подключения изменилась; запуск остановлен.",
             "invalid_scope": "Область запуска недействительна; сбор данных не выполняется.",
             "scope_denied": "Запрос за пределами области запуска отклонён.",
-            "interrupted": "Worker остановлен; запуск не завершён.",
+            "interrupted": "Обработчик остановлен; запуск не завершён.",
         }
         with self.sessions.begin() as session:
             run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())

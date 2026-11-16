@@ -94,6 +94,19 @@ def test_setup_passive_db_only_no_legacy_fallback(workbench):
     assert (
         "oidc_providers" not in capabilities and capabilities["setup_required"] is True
     )
+    feature_copy = " ".join(
+        f"{item['title']} {item['detail']}" for item in capabilities["features"]
+    )
+    for leftover in (
+        "read-only",
+        "benchmark",
+        "credentials",
+        "In-cluster",
+        "host scanning",
+        "OIDC",
+        "Keycloak",
+    ):
+        assert leftover not in feature_copy
     workbench.http_factory.assert_not_called()
     with workbench.app.state.sessions() as session:
         assert session.get(IntegrationPolicy, 1) is None

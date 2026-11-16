@@ -129,7 +129,8 @@ function PolicyEditor({
                   spellCheck={false}
                 />
                 <small>
-                  DNS-имя или IPv4/IPv6 без https:// и пути. Не маска.
+                  DNS-имя или IPv4/IPv6 без схемы и пути. Подстановочные маски
+                  не допускаются.
                 </small>
               </label>
               <label>

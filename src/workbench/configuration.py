@@ -278,10 +278,10 @@ class PolicyHTTP:
         client_identity: dict | None = None,
     ):
         if purpose not in PURPOSES:
-            raise DomainError("Неизвестное назначение egress", "configuration_required")
+            raise DomainError("Неизвестное назначение исходящего подключения", "configuration_required")
         if client_identity is not None and purpose != "kubernetes":
             raise DomainError(
-                "Client certificate identities are permitted only for Kubernetes.",
+                "Клиентские сертификаты допускаются только для Kubernetes.",
                 "credential_invalid",
             )
         self.client_identity = copy.deepcopy(client_identity)
@@ -354,7 +354,7 @@ def import_legacy_configuration(
         "allowed_hosts": len(settings.allowed_hosts),
         "already_imported": policy["legacy_imported"],
         "applied": False,
-        "warning": "Проверьте destinations/ports перед применением. Старые credentials требуют повторной авторизации.",
+        "warning": "Проверьте адреса и порты перед применением. Старые учётные данные требуют повторной авторизации.",
     }
     if not apply:
         return preview
@@ -364,7 +364,7 @@ def import_legacy_configuration(
         return preview
     if current_policy.revision != 0:
         raise DomainError(
-            "DB-настройки уже существуют; автоматическое объединение запрещено",
+            "Настройки в базе уже существуют; автоматическое объединение запрещено",
             "conflict",
         )
     allowed = {_canonical_host(host) for host in settings.allowed_hosts}
@@ -372,7 +372,7 @@ def import_legacy_configuration(
     for cluster in session.scalars(select(Cluster)):
         _, host, port = _https_parts(cluster.server)
         if host not in allowed:
-            raise _invalid("Legacy API endpoint отсутствует в явном allowlist")
+            raise _invalid("Прежний адрес API отсутствует в явном списке разрешённых узлов")
         destinations.add(("kubernetes", host, port))
     rules = [
         {

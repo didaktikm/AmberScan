@@ -91,6 +91,9 @@ describe("B1 safe and honest rendered UI", () => {
     );
     expect(markup).toContain('type="password"');
     expect(markup).toContain("Пароль администратора");
+    expect(markup).toContain("локальной учётной записи AmberData");
+    expect(markup).not.toContain("Client secret");
+    expect(markup).not.toContain("OIDC");
   });
   test("auditor can reimport and revoke only their personal authorization", () => {
     const markup = renderToStaticMarkup(

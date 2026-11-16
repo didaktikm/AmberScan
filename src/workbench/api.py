@@ -178,11 +178,11 @@ class BoundaryMiddleware:
         if scope["method"] in {"POST", "PATCH", "DELETE", "PUT"}:
             origin = headers.get(b"origin")
             if origin and origin.decode("latin-1") != self.settings.public_origin:
-                response = JSONResponse({"detail": {"code": "csrf", "message": "Origin rejected"}}, 403)
+                response = JSONResponse({"detail": {"code": "csrf", "message": "Источник запроса отклонён"}}, 403)
                 await response(scope, receive, send)
                 return
             if headers.get(b"sec-fetch-site") == b"cross-site":
-                response = JSONResponse({"detail": {"code": "csrf", "message": "Cross-site request rejected"}}, 403)
+                response = JSONResponse({"detail": {"code": "csrf", "message": "Межсайтовый запрос отклонён"}}, 403)
                 await response(scope, receive, send)
                 return
         body = bytearray()
@@ -192,7 +192,7 @@ class BoundaryMiddleware:
                 return
             body.extend(message.get("body", b""))
             if len(body) > self.settings.max_body_bytes:
-                response = JSONResponse({"detail": {"code": "too_large", "message": "Request exceeds 1 MiB"}}, 413)
+                response = JSONResponse({"detail": {"code": "too_large", "message": "Запрос превышает 1 МиБ"}}, 413)
                 await response(scope, receive, send)
                 return
             if not message.get("more_body", False):
@@ -287,7 +287,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if cluster.lifecycle != "ready":
             raise DomainError("Объект не найден", "not_found")
         if not set(namespaces) <= set(cluster.namespaces):
-            raise DomainError("Namespace вне разрешённой области", "forbidden")
+            raise DomainError("Пространство имён вне разрешённой области", "forbidden")
         return validate_run_scope({"namespaces": namespaces, "max_objects": 1000, "timeout_seconds": timeout_seconds, "inventory_version": INVENTORY_VERSION}, cluster.namespaces)
 
     def session_view(user: User, web_session: WebSession) -> dict:
@@ -379,14 +379,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "version": __version__,
             "features": [
-                {"id": "read_only", "title": "Разовый read-only аудит", "status": "available", "detail": "Kubernetes API: ограниченные встроенные проверки. Не полный benchmark."},
-                {"id": "imports", "title": "Импорт отчётов", "status": "available", "detail": "Trivy / kube-bench / Kubescape. Происхождение и scope импорта не подтверждаются."},
-                {"id": "live_scanners", "title": "Запуск Kubescape / Trivy", "status": "not_implemented", "detail": "Нужны проверенные версии runtime и реальные тесты адаптеров."},
-                {"id": "scheduled", "title": "Периодический аудит", "status": "not_implemented", "detail": "Следующий этап; автоматическое обновление credentials не реализовано."},
-                {"id": "extended", "title": "Расширенные проверки", "status": "not_implemented", "detail": "Создание pods, host scanning и сетевые тесты отключены."},
-                {"id": "operator", "title": "In-cluster контроль", "status": "not_implemented", "detail": "Установка и чтение операторов не реализованы."},
-                {"id": "runtime", "title": "Runtime-наблюдение", "status": "not_implemented", "detail": "Falco/Tetragon — отдельный последующий этап."},
-                {"id": "team_sso", "title": "SSO самого приложения", "status": "not_implemented", "detail": "Пилот использует локальные учётные записи; не командный production-релиз."},
+                {"id": "read_only", "title": "Разовый аудит только на чтение", "status": "available", "detail": "Kubernetes API: ограниченные встроенные проверки. Это не полный контрольный профиль."},
+                {"id": "imports", "title": "Импорт отчётов", "status": "available", "detail": "Trivy, kube-bench и Kubescape. Происхождение и область импорта не подтверждаются."},
+                {"id": "live_scanners", "title": "Запуск Kubescape и Trivy", "status": "not_implemented", "detail": "Нужны проверенные версии среды выполнения и реальные тесты адаптеров."},
+                {"id": "scheduled", "title": "Периодический аудит", "status": "not_implemented", "detail": "Следующий этап; автоматическое обновление учётных данных не реализовано."},
+                {"id": "extended", "title": "Расширенные проверки", "status": "not_implemented", "detail": "Создание подов, сканирование узлов и сетевые тесты отключены."},
+                {"id": "operator", "title": "Контроль из кластера", "status": "not_implemented", "detail": "Установка и чтение операторов не реализованы."},
+                {"id": "runtime", "title": "Наблюдение за средой выполнения", "status": "not_implemented", "detail": "Falco и Tetragon — отдельный последующий этап."},
+                {"id": "team_sso", "title": "Единый вход в приложение", "status": "not_implemented", "detail": "Пилот использует локальные учётные записи и не готов к командной эксплуатации."},
             ],
             "setup_required": kubernetes_setup_required,
             "kubernetes_setup_required": kubernetes_setup_required,
@@ -468,7 +468,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise DomainError("Доступ уже изменён; обновите данные", "conflict")
         metadata = extracted["metadata"]
         if (metadata["server"], metadata.get("ca_data"), metadata["context"]) != (cluster.server, cluster.ca_data, cluster.context):
-            raise DomainError("Endpoint, CA и context должны совпадать с подключением", "connection_mismatch")
+            raise DomainError("Адрес API, центр сертификации и контекст должны совпадать с сохранённым подключением", "connection_mismatch")
         invalidate_access(session, cluster_id=cluster.id, user_id=user.id, reason="Личная авторизация заменена")
         session.flush()
         store_kubeconfig_credential(session, vault, user, request.state.web_session, cluster, extracted, payload.storage_mode, authorization_values(cluster, policy, binding))
@@ -486,7 +486,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         invalidate_access(session, cluster_id=cluster.id, user_id=user.id if personal else None, reason="Авторизация отозвана")
         audit(session, user.username, "personal_authorization_removed" if personal else "credentials_removed", cluster.id)
         session.commit()
-        return {"status": "authorization_required", "detail": "Локальные credentials удалены. Это не отзыв credentials на стороне Kubernetes; активный запрос может завершиться до отмены."}
+        return {"status": "authorization_required", "detail": "Локальные учётные данные удалены. Это не отзывает учётные данные в Kubernetes; активный запрос может завершиться до отмены."}
 
     @app.delete("/api/clusters/{cluster_id}/authorization")
     def revoke_personal(cluster_id: str, user: CurrentUser, session=Depends(db)):
@@ -614,7 +614,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/runs")
     def list_runs(user: CurrentUser, session=Depends(db), offset: int = 0):
         if offset < 0:
-            raise DomainError("Invalid offset")
+            raise DomainError("Некорректное смещение списка")
         ids = [cluster.id for cluster in clusters_for(session, user)]
         rows = session.scalars(select(Run).where(Run.cluster_id.in_(ids)).order_by(Run.created_at.desc()).offset(offset).limit(500))
         return [run_view(session, run) for run in rows]
@@ -653,7 +653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/findings")
     def list_findings(user: CurrentUser, session=Depends(db), cluster_id: str | None = None, severity: str | None = None, q: str = "", offset: int = 0):
         if offset < 0 or len(q) > 200:
-            raise DomainError("Invalid filter")
+            raise DomainError("Некорректный фильтр")
         ids = [cluster.id for cluster in clusters_for(session, user)]
         if cluster_id:
             permitted_cluster(session, user, cluster_id)
@@ -675,7 +675,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise DomainError("Находка не найдена", "not_found")
         permitted_cluster(session, user, finding.cluster_id)
         if user.role not in REVIEW_ROLES and payload.disposition != "confirmed":
-            raise DomainError("Требуется Security lead", "forbidden")
+            raise DomainError("Требуется роль руководителя ИБ", "forbidden")
         finding.disposition = payload.disposition
         audit(session, user.username, "finding_disposition", finding.id, disposition=payload.disposition)
         session.commit()
@@ -694,7 +694,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def audit_list(user: CurrentUser, session=Depends(db), offset: int = 0):
         role(user, {"administrator"})
         if offset < 0:
-            raise DomainError("Invalid offset")
+            raise DomainError("Некорректное смещение списка")
         rows = session.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).offset(offset).limit(500))
         return [{"id": row.id, "created_at": iso(row.created_at), "actor": row.actor, "action": row.action, "target": row.target, "detail": row.detail} for row in rows]
 

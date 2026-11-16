@@ -7,7 +7,7 @@ import json
 def render_report(run: dict, format: str) -> tuple[str, str, str]:
     report = {
         "schema": "amberdata.run.v1",
-        "notice": "Отчёт ограничен указанным scope и выполненными проверками. Отсутствие находок не доказывает безопасность. Импорт не подтверждает происхождение данных.",
+        "notice": "Отчёт ограничен указанной областью и выполненными проверками. Отсутствие находок не доказывает безопасность. Импорт не подтверждает происхождение данных.",
         **run,
     }
     encoded = json.dumps(report, ensure_ascii=False, indent=2)

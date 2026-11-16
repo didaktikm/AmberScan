@@ -101,9 +101,8 @@ export function AdminConfirmation({
                   onChange={(event) => setPassword(event.target.value)}
                 />
                 <small>
-                  Пароль вашей локальной учётной записи AmberData, не Client
-                  secret. Подтверждение действует до 5 минут; пароль не
-                  сохраняется.
+                  Пароль вашей локальной учётной записи AmberData.
+                  Подтверждение действует до 5 минут; пароль не сохраняется.
                 </small>
               </label>
             )}
