@@ -130,6 +130,26 @@ def test_draft_owner_privacy_includes_other_administrators(workbench, username):
     workbench.http_factory.assert_not_called()
 
 
+def test_same_endpoint_requires_a_different_name(workbench):
+    client = workbench.client
+    login(client)
+    draft = make_draft(workbench)
+    with workbench.app.state.sessions.begin() as session:
+        saved = session.get(Cluster, draft.id)
+        saved.lifecycle = "ready"
+        saved.namespaces = ["chosen"]
+        saved.draft_owner_id = None
+        saved.draft_expires_at = None
+    duplicate = client.post("/api/cluster-drafts", json=draft_payload(name="Synthetic draft"))
+    assert_error(duplicate, 400, "cluster_duplicate")
+    assert "Synthetic draft" in duplicate.json()["detail"]["message"]
+    same_name = client.post("/api/cluster-drafts", json=draft_payload(name="Synthetic draft", accept_alias=True))
+    assert_error(same_name, 400, "cluster_duplicate")
+    alias = make_draft(workbench, draft_payload(name="Второй контур", accept_alias=True))
+    assert alias.name == "Второй контур" and alias.lifecycle == "draft"
+    workbench.http_factory.assert_not_called()
+
+
 @pytest.mark.parametrize("username", ["auditor", "viewer", "lead"])
 def test_non_admin_cannot_create_drafts(workbench, username):
     login(workbench.client, username)

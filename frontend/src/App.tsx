@@ -189,6 +189,7 @@ export function App() {
   }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<string>();
+  const [findingsCluster, setFindingsCluster] = useState<string>();
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
@@ -413,6 +414,10 @@ export function App() {
               openRun={openRun}
               resumeDraftId={resumeDraftId}
               onResumeHandled={() => setResumeDraftId(undefined)}
+              onOpenFindings={(clusterId) => {
+                setFindingsCluster(clusterId);
+                setPage("findings");
+              }}
             />
           )}
           {page === "runs" && (
@@ -423,7 +428,12 @@ export function App() {
             />
           )}
           {page === "findings" && (
-            <FindingsPage user={user} openRun={openRun} />
+            <FindingsPage
+              key={findingsCluster ?? "all"}
+              user={user}
+              openRun={openRun}
+              initialCluster={findingsCluster}
+            />
           )}
           {page === "imports" && <ImportsPage user={user} openRun={openRun} />}
           {page === "modes" && <ModesPage />}

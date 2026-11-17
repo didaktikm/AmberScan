@@ -112,6 +112,34 @@
     display: grid;
     gap: 14px;
   }
+  .cluster-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .duplicate-prompt {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--surface-raised, transparent);
+  }
+  .activity-log {
+    list-style: none;
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+  }
+  .activity-log li {
+    display: grid;
+    gap: 4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
   .draft-row {
     display: flex;
     align-items: center;

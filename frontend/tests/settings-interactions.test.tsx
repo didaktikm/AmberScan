@@ -507,6 +507,7 @@ describe("B1 real frontend state, isolated API fixtures", () => {
       environment: "test-env",
       auth_type: "kubeconfig",
       storage_mode: "run_only",
+      accept_alias: false,
     });
     expect(calls.some((call) => call.path === "/api/clusters")).toBe(false);
     expect(
@@ -1346,6 +1347,7 @@ describe("0.5 kubeCapabilities kubeconfig and personal recovery", () => {
         environment: "test",
         auth_type: "kubeconfig",
         storage_mode: kind === "token" ? "run_only" : "persistent",
+        accept_alias: false,
         connection: {
           kind: "kubeconfig",
           context: draft.context,

@@ -90,7 +90,37 @@ def permitted_connection(session, user, cluster_id: str) -> Cluster:
     return permitted_cluster(session, user, cluster_id)
 
 
-def create_draft(session, user, *, name, environment, connection, auth_type="kubeconfig", extracted=None) -> Cluster:
+def _same_endpoint(cluster: Cluster, server: str, context: str, ca_data: str | None) -> bool:
+    return (
+        cluster.context == context
+        and (cluster.server or "").rstrip("/") == server
+        and (cluster.ca_data or None) == (ca_data or None)
+    )
+
+
+def reject_duplicate_endpoint(session, *, name: str, server: str, context: str, ca_data: str | None, accept_alias: bool) -> None:
+    """Block a second ready connection for the same API, context and CA.
+
+    A different display name is allowed only after the operator confirms the alias.
+    """
+    server = server.rstrip("/")
+    matches = [
+        cluster for cluster in session.scalars(select(Cluster).where(Cluster.lifecycle == "ready"))
+        if _same_endpoint(cluster, server, context, ca_data)
+    ]
+    if not matches:
+        return
+    existing = matches[0].name
+    taken = {cluster.name.casefold() for cluster in matches}
+    if accept_alias and name.casefold() not in taken:
+        return
+    raise DomainError(
+        f"Кластер «{existing}» уже добавлен с этим адресом API, контекстом и сертификатом.",
+        "cluster_duplicate",
+    )
+
+
+def create_draft(session, user, *, name, environment, connection, auth_type="kubeconfig", extracted=None, accept_alias=False) -> Cluster:
     if user.role != "administrator" or not user.active:
         raise DomainError("Недостаточно прав приложения", "forbidden")
     if auth_type != "kubeconfig" or connection["kind"] != "kubeconfig":
@@ -99,6 +129,14 @@ def create_draft(session, user, *, name, environment, connection, auth_type="kub
     metadata = extracted["metadata"]
     # Pure metadata validation: never DNS, kubeconfig commands, tokens or HTTP here.
     validate_connection_metadata(metadata["server"], metadata.get("ca_data"))
+    reject_duplicate_endpoint(
+        session,
+        name=name,
+        server=metadata["server"],
+        context=connection["context"],
+        ca_data=metadata.get("ca_data"),
+        accept_alias=accept_alias,
+    )
     owner = session.scalar(select(User).where(User.id == user.id).with_for_update(key_share=True).execution_options(populate_existing=True))
     if owner is None or not owner.active or owner.role != "administrator":
         raise DomainError("Недостаточно прав приложения", "forbidden")

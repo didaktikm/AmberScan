@@ -133,6 +133,8 @@ class DraftInput(Input):
     auth_type: Literal["kubeconfig"] = "kubeconfig"
     storage_mode: Literal["run_only", "persistent", "days_30"] = "run_only"
     connection: KubeconfigConnection
+    # Explicit second record of the same endpoint, context and CA under a new name.
+    accept_alias: bool = False
 
 
 class CredentialInput(KubeconfigInput):
@@ -443,7 +445,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user = recheck_identity(session, user.id, request.state.web_session.token_hash)
         # Acquire policy before inserting the cluster/binding FK rows.
         lock_policy(session)
-        cluster = create_draft(session, user, name=payload.name, environment=payload.environment, connection=payload.connection.model_dump(), auth_type=payload.auth_type, extracted=extracted)
+        cluster = create_draft(session, user, name=payload.name, environment=payload.environment, connection=payload.connection.model_dump(), auth_type=payload.auth_type, extracted=extracted, accept_alias=payload.accept_alias)
         cluster, policy, binding = lock_authorization(session, cluster.id, user.id, create_binding=True)
         store_kubeconfig_credential(session, vault, user, request.state.web_session, cluster, extracted, payload.storage_mode, authorization_values(cluster, policy, binding))
         audit(session, user.username, "kubeconfig_authorized", cluster.id, storage_mode=payload.storage_mode)

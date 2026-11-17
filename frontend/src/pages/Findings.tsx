@@ -346,13 +346,15 @@ export function FindingTable({
 export function FindingsPage({
   user,
   openRun,
+  initialCluster = "",
 }: {
   user: User;
   openRun: (id: string) => void;
+  initialCluster?: string;
 }) {
   const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState("");
-  const [cluster, setCluster] = useState("");
+  const [cluster, setCluster] = useState(initialCluster);
   const [severity, setSeverity] = useState("");
   const [disposition, setDisposition] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");

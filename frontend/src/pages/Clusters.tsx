@@ -22,7 +22,14 @@ import {
   Panel,
   Spinner,
 } from "../ui";
-import { canManage, canScan, credentialValid, formatDate } from "../utils";
+import {
+  canManage,
+  canScan,
+  credentialValid,
+  formatDate,
+  stageLabels,
+  statusLabels,
+} from "../utils";
 import { RunLaunch } from "../RunLaunch";
 import { AdminConfirmation } from "../AdminConfirmation";
 import { ClusterWizard } from "../ConnectionWizard";
@@ -41,7 +48,7 @@ import {
 } from "../namespaces";
 import { CredentialRecovery, useRecoveredCluster } from "../CredentialRecovery";
 import { ScopeEditor } from "../ScopeEditor";
-import type { Capabilities, Cluster, User } from "../types";
+import type { Capabilities, Cluster, Run, User } from "../types";
 
 export function ClusterDetail({
   cluster: source,
@@ -479,16 +486,36 @@ export function ClusterDetail({
   );
 }
 
+type LaunchLog = {
+  key: string;
+  at: string;
+  cluster: string;
+  title: string;
+  message: string;
+  runId?: string;
+  status?: string;
+  stage?: string;
+};
+
+const listActions = [
+  ["live_scanner", "Сканеры"],
+  ["extended", "Расширенные"],
+  ["operator", "Оператор"],
+  ["continuous", "Наблюдение"],
+] as const;
+
 export function ClustersPage({
   user,
   openRun,
   resumeDraftId,
   onResumeHandled,
+  onOpenFindings,
 }: {
   user: User;
   openRun: (id: string) => void;
   resumeDraftId?: string;
   onResumeHandled?: () => void;
+  onOpenFindings?: (clusterId: string) => void;
 }) {
   const clusters = useResource<Cluster[]>("/clusters");
   const drafts = useResource<Cluster[]>(
@@ -516,6 +543,129 @@ export function ClustersPage({
   }
   const [launch, setLaunch] = useState<string>();
   const [created, setCreated] = useState(false);
+  const [checked, setChecked] = useState<string[]>([]);
+  const [logs, setLogs] = useState<LaunchLog[]>([]);
+  const [actionBusy, setActionBusy] = useState<string>();
+  const ready =
+    clusters.data?.filter((cluster) => cluster.lifecycle === "ready") ?? [];
+  const chosen = ready.filter((cluster) => checked.includes(cluster.id));
+  useEffect(() => {
+    const ids = new Set(
+      (clusters.data ?? [])
+        .filter((cluster) => cluster.lifecycle === "ready")
+        .map((cluster) => cluster.id),
+    );
+    setChecked((current) => {
+      const next = current.filter((id) => ids.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [clusters.data]);
+  useEffect(() => {
+    const pending = logs.filter(
+      (item) =>
+        item.runId &&
+        (item.status === "queued" || item.status === "running" || !item.status),
+    );
+    if (!pending.length) return;
+    const timer = window.setInterval(() => {
+      void Promise.all(
+        pending.map(async (item) => {
+          const run = await api<Run>(`/runs/${encodeURIComponent(item.runId!)}`);
+          return { id: item.runId!, run };
+        }),
+      )
+        .then((updates) => {
+          setLogs((current) => {
+            let changed = false;
+            const next = current.map((item) => {
+              const update = updates.find((entry) => entry.id === item.runId);
+              if (
+                !update ||
+                (update.run.status === item.status &&
+                  update.run.stage === item.stage &&
+                  (update.run.error || item.message) === item.message)
+              )
+                return item;
+              changed = true;
+              return {
+                ...item,
+                status: update.run.status,
+                stage: update.run.stage,
+                message: update.run.error || item.message,
+              };
+            });
+            return changed ? next : current;
+          });
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [logs]);
+  function remember(entries: LaunchLog[]) {
+    if (!entries.length) return;
+    setLogs((current) => [...entries, ...current].slice(0, 40));
+  }
+  async function runOnChosen(
+    action: "scan" | (typeof listActions)[number][0],
+    title: string,
+  ) {
+    if (!chosen.length || actionBusy) return;
+    setActionBusy(action);
+    const entries: LaunchLog[] = [];
+    for (const cluster of chosen) {
+      const at = new Date().toISOString();
+      try {
+        if (action === "scan") {
+          const run = await api<Run>("/runs", {
+            method: "POST",
+            body: {
+              cluster_id: cluster.id,
+              namespaces: cluster.namespaces,
+              timeout_seconds: 300,
+            },
+          });
+          entries.push({
+            key: run.id,
+            at,
+            cluster: cluster.name,
+            title,
+            message: "Проверка поставлена в очередь. Кластер не изменяется.",
+            runId: run.id,
+            status: run.status,
+            stage: run.stage,
+          });
+        } else {
+          const result = await api<{
+            detail: string;
+            run_id?: string;
+            status?: string;
+          }>(`/clusters/${encodeURIComponent(cluster.id)}/protected-action`, {
+            method: "POST",
+            body: { action, confirm: true },
+          });
+          entries.push({
+            key: result.run_id ?? `${cluster.id}-${at}`,
+            at,
+            cluster: cluster.name,
+            title,
+            message: result.detail,
+            runId: result.run_id,
+            status: result.status,
+          });
+        }
+      } catch (reason) {
+        entries.push({
+          key: `${cluster.id}-${at}`,
+          at,
+          cluster: cluster.name,
+          title,
+          message: errorText(reason),
+        });
+      }
+    }
+    remember(entries);
+    setActionBusy(undefined);
+  }
   function refresh() {
     clusters.reload();
     capabilities.reload();
@@ -626,10 +776,61 @@ export function ClustersPage({
             <span className="small muted">{clusters.data.length} доступно</span>
           }
         >
+          {canScan(user.role) && (
+            <div className="cluster-toolbar">
+              <span className="small muted">
+                {chosen.length
+                  ? `Выбрано: ${chosen.length}`
+                  : "Отметьте кластеры галочками"}
+              </span>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!chosen.length || !!actionBusy}
+                onClick={() => void runOnChosen("scan", "Проверка")}
+              >
+                <Play size={16} />
+                {actionBusy === "scan" ? "Запускаем…" : "Запустить проверку"}
+              </button>
+              {listActions.map(([action, label]) => (
+                <button
+                  key={action}
+                  type="button"
+                  className="button button-secondary"
+                  disabled={!chosen.length || !!actionBusy}
+                  onClick={() => void runOnChosen(action, label)}
+                >
+                  {actionBusy === action ? "Запускаем…" : label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={chosen.length !== 1}
+                onClick={() => onOpenFindings?.(chosen[0].id)}
+              >
+                Уязвимости
+              </button>
+            </div>
+          )}
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="Выбрать все кластеры"
+                      checked={!!ready.length && chosen.length === ready.length}
+                      onChange={(event) =>
+                        setChecked(
+                          event.target.checked
+                            ? ready.map((cluster) => cluster.id)
+                            : [],
+                        )
+                      }
+                    />
+                  </th>
                   <th>Кластер</th>
                   <th>Контекст / адрес API</th>
                   <th>Область</th>
@@ -645,6 +846,20 @@ export function ClustersPage({
                   .filter((cluster) => cluster.lifecycle === "ready")
                   .map((cluster) => (
                     <tr key={cluster.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Выбрать кластер ${cluster.name}`}
+                          checked={checked.includes(cluster.id)}
+                          onChange={(event) =>
+                            setChecked((current) =>
+                              event.target.checked
+                                ? [...current, cluster.id]
+                                : current.filter((id) => id !== cluster.id),
+                            )
+                          }
+                        />
+                      </td>
                       <td>
                         <button
                           className="table-link"
@@ -721,6 +936,41 @@ export function ClustersPage({
             </EmptyState>
           </Panel>
         )
+      )}
+      {canScan(user.role) && (
+        <Panel title="Журнал запусков">
+          {logs.length ? (
+            <ol className="activity-log">
+              {logs.map((item) => (
+                <li key={item.key}>
+                  <strong>
+                    {formatDate(item.at)} · {item.cluster} · {item.title}
+                  </strong>
+                  <span>
+                    {item.status
+                      ? `${statusLabels[item.status] ?? item.status}${item.stage ? ` · ${stageLabels[item.stage] ?? item.stage}` : ""}. `
+                      : ""}
+                    {item.message}
+                  </span>
+                  {item.runId && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => openRun(item.runId!)}
+                    >
+                      Открыть запуск
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="small muted">
+              Здесь появятся строки, когда проверка, сканеры или наблюдение
+              будут поставлены в очередь.
+            </p>
+          )}
+        </Panel>
       )}
       <div className="page-footnote">
         <ShieldCheck size={16} />

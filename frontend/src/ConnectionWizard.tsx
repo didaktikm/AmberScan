@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FileKey2, Settings2 } from "lucide-react";
-import { api, errorText, MAX_KUBECONFIG_BYTES, readTextFile } from "./api";
+import {
+  ApiError,
+  api,
+  errorText,
+  MAX_KUBECONFIG_BYTES,
+  readTextFile,
+} from "./api";
 import { useResource } from "./hooks";
 import { NamespacePicker } from "./NamespacePicker";
 import {
@@ -286,6 +292,8 @@ export function ClusterWizard({
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string>();
+  const [duplicate, setDuplicate] = useState<string>();
+  const [aliasName, setAliasName] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
   const [draftBusy, setDraftBusy] = useState(false);
@@ -353,29 +361,55 @@ export function ClusterWizard({
           );
         setStep(2);
       } else {
-        if (!name.trim() || !environment.trim())
-          throw new Error(
-            "Название и окружение не должны состоять из пробелов.",
-          );
-        const result = await api<Cluster>("/cluster-drafts", {
-          method: "POST",
-          body: {
-            name: name.trim(),
-            environment: environment.trim(),
-            auth_type: "kubeconfig",
-            storage_mode: storage,
-            connection: { kind: "kubeconfig", content, context },
-          },
-        });
-        if (attempt !== operation.current) return;
-        setContent("");
-        setContexts([]);
-        setFileName("");
-        setDraft(result);
-        onDraftChanged?.();
+        await createDraft(name.trim(), false, attempt);
       }
     } catch (reason) {
-      if (attempt === operation.current) setError(errorText(reason));
+      if (attempt !== operation.current) return;
+      if (reason instanceof ApiError && reason.code === "cluster_duplicate") {
+        setDuplicate(reason.message);
+        setAliasName("");
+      } else setError(errorText(reason));
+    } finally {
+      if (attempt === operation.current) setBusy(false);
+    }
+  }
+  async function createDraft(
+    draftName: string,
+    acceptAlias: boolean,
+    attempt = ++operation.current,
+  ) {
+    if (!draftName || !environment.trim())
+      throw new Error("Название и окружение не должны состоять из пробелов.");
+    const result = await api<Cluster>("/cluster-drafts", {
+      method: "POST",
+      body: {
+        name: draftName,
+        environment: environment.trim(),
+        auth_type: "kubeconfig",
+        storage_mode: storage,
+        accept_alias: acceptAlias,
+        connection: { kind: "kubeconfig", content, context },
+      },
+    });
+    if (attempt !== operation.current) return;
+    setContent("");
+    setContexts([]);
+    setFileName("");
+    setDuplicate(undefined);
+    setDraft(result);
+    onDraftChanged?.();
+  }
+  async function confirmAlias() {
+    const attempt = ++operation.current;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await createDraft(aliasName.trim(), true, attempt);
+    } catch (reason) {
+      if (attempt !== operation.current) return;
+      if (reason instanceof ApiError && reason.code === "cluster_duplicate")
+        setDuplicate(reason.message);
+      else setError(errorText(reason));
     } finally {
       if (attempt === operation.current) setBusy(false);
     }
@@ -442,6 +476,44 @@ export function ClusterWizard({
               ))}
             </ol>
             <ErrorBox message={error} />
+            {duplicate && (
+              <div className="duplicate-prompt">
+                <h3>Этот кластер уже добавлен</h3>
+                <p>{duplicate}</p>
+                <p>
+                  Хотите добавить его ещё раз под другим именем? Адрес API,
+                  контекст и сертификат останутся теми же.
+                </p>
+                <label>
+                  Другое имя
+                  <input
+                    value={aliasName}
+                    required
+                    maxLength={120}
+                    disabled={busy}
+                    onChange={(event) => setAliasName(event.target.value)}
+                  />
+                </label>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    disabled={busy || !aliasName.trim()}
+                    onClick={() => void confirmAlias()}
+                  >
+                    Добавить под другим именем
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={busy}
+                    onClick={() => setDuplicate(undefined)}
+                  >
+                    Не добавлять
+                  </button>
+                </div>
+              </div>
+            )}
             {step === 0 && (
               <>
                 <div className="file-upload">
