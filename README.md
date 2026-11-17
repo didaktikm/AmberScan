@@ -1,4 +1,4 @@
-# AmberData Kubernetes Security Workbench — kubeconfig-only / 0.5.0
+# AmberData Kubernetes Security Workbench — kubeconfig-only / 0.5.1
 
 Браузерный React UI, FastAPI API, PostgreSQL и отдельный worker. Единственный способ подключения Kubernetes — **self-contained kubeconfig с inline token или клиентским сертификатом/ключом**. Авторизация через внешних провайдеров, redirects и соответствующие настройки удалены из действующего приложения. Локальный вход Workbench остаётся отдельным от Kubernetes identity.
 
@@ -86,7 +86,7 @@ uv run --frozen ruff check src tests
 
 ```bash
 PYTHONPATH=src uv run --frozen python tests/smoke_namespace_postgres.py \
-  --maintenance-image amberdata-workbench-maintenance:0.5.0-local
+  --maintenance-image amberdata-workbench-maintenance:0.5.1-local
 PYTHONPATH=src uv run --frozen python tests/smoke_compose.py
 ```
 
