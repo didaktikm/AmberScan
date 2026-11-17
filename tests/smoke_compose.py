@@ -105,7 +105,7 @@ def run() -> None:
                     client.get("/api/session").json()["user"]["role"] == "administrator"
                 )
                 capabilities = client.get("/api/capabilities").json()
-                assert capabilities["version"] == "0.5.1"
+                assert capabilities["version"] == "0.5.2"
                 assert "oidc_providers" not in capabilities
                 assert "oidc_setup_required" not in capabilities
                 overview = client.get("/api/overview").json()

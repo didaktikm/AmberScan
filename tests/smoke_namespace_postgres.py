@@ -622,7 +622,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
-        "--maintenance-image", default="amberdata-workbench-maintenance:0.5.1-local"
+        "--maintenance-image", default="amberdata-workbench-maintenance:0.5.2-local"
     )
     arguments = parser.parse_args()
     if arguments.inside:

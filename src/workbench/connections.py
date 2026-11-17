@@ -8,9 +8,13 @@ from urllib.parse import parse_qsl, urlsplit
 from sqlalchemy import delete, func, select
 
 from workbench.admin_routes import REAUTH_WINDOW
+from workbench.configuration import invalidate_access, lock_policy
 from workbench.db import (
     Cluster,
     ClusterCredential,
+    Finding,
+    Observation,
+    Run,
     User,
     WebSession,
     audit,
@@ -361,3 +365,54 @@ def require_preflight_success(coverage, namespaces, *, accept_partial: bool) -> 
         raise DomainError("Проверка доступа не подтвердила выбранную область", "preflight_failed")
     if any(row.get("code") == "http_403" for row in coverage) and not accept_partial:
         raise DomainError("Подтвердите сохранение области с отказами RBAC (403)", "preflight_partial")
+
+
+def _locked_ready_cluster(session, cluster_id: str) -> Cluster:
+    """Policy lock, then the ready cluster row. Callers already checked the role."""
+    lock_policy(session)
+    cluster = session.scalar(
+        select(Cluster)
+        .where(Cluster.id == cluster_id, Cluster.lifecycle == "ready")
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if cluster is None:
+        raise DomainError("Объект не найден", "not_found")
+    return cluster
+
+
+def update_cluster_profile(session, user, cluster_id: str, name: str, environment: str) -> Cluster:
+    """Rename a local connection. The Kubernetes API address and credentials stay."""
+    if user.role != "administrator" or not user.active:
+        raise DomainError("Недостаточно прав приложения", "forbidden")
+    cluster = permitted_cluster(session, user, cluster_id)
+    cluster = _locked_ready_cluster(session, cluster.id)
+    cluster.name = name
+    cluster.environment = environment
+    audit(
+        session,
+        user.username,
+        "cluster_profile_changed",
+        cluster.id,
+        name=name,
+        environment=environment,
+    )
+    session.flush()
+    return cluster
+
+
+def remove_ready_cluster(session, user, cluster_id: str) -> None:
+    """Delete the local connection and its stored results. Kubernetes is not changed."""
+    if user.role != "administrator" or not user.active:
+        raise DomainError("Недостаточно прав приложения", "forbidden")
+    cluster = permitted_cluster(session, user, cluster_id)
+    cluster = _locked_ready_cluster(session, cluster.id)
+    name = cluster.name
+    invalidate_access(session, cluster_id=cluster.id, reason="Подключение удалено из приложения")
+    finding_ids = select(Finding.id).where(Finding.cluster_id == cluster.id)
+    session.execute(delete(Observation).where(Observation.finding_id.in_(finding_ids)))
+    session.execute(delete(Finding).where(Finding.cluster_id == cluster.id))
+    session.execute(delete(Run).where(Run.cluster_id == cluster.id))
+    session.delete(cluster)
+    audit(session, user.username, "cluster_deleted", cluster_id, name=name)
+    session.flush()

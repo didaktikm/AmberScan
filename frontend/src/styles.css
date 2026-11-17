@@ -117,7 +117,16 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
+    margin-bottom: 0;
+  }
+  .cluster-toolbar-body {
     margin-bottom: 14px;
+    padding: 14px 20px 0;
+  }
+  .panel-header .cluster-toolbar {
+    flex: 1 1 16rem;
+    justify-content: flex-end;
+    min-width: 0;
   }
   .duplicate-prompt {
     display: grid;

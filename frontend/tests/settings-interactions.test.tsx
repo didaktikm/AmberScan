@@ -1169,6 +1169,53 @@ describe("draft connection lifecycle", () => {
   });
 });
 
+describe("cluster list actions", () => {
+  test("add, edit and delete sit above the cluster list", async () => {
+    let clusters = [cluster];
+    handler = (path, method, body) => {
+      if (path === "/api/clusters" && method === "GET") return json(clusters);
+      if (path === "/api/cluster-drafts") return json([]);
+      if (path === "/api/capabilities") return json(capabilities);
+      if (path === `/api/clusters/${cluster.id}` && method === "PATCH") {
+        clusters = [{ ...cluster, name: String(body?.name), environment: String(body?.environment) }];
+        return json(clusters[0]);
+      }
+      if (path === `/api/clusters/${cluster.id}` && method === "DELETE") {
+        clusters = [];
+        return json({ status: "deleted" });
+      }
+      return defaultHandler(path, method, body);
+    };
+    await mount(<ClustersPage user={admin} openRun={() => {}} />);
+    const actions = () =>
+      container.querySelector<HTMLElement>('[aria-label="Действия с кластерами"]')!;
+    expect(actions().textContent).toContain("Добавить");
+    expect(actions().textContent).toContain("Изменить");
+    expect(actions().textContent).toContain("Удалить");
+    expect(button("Изменить", actions()).disabled).toBe(true);
+    expect(button("Удалить", actions()).disabled).toBe(true);
+    const box = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Выбрать кластер Test cluster"]',
+    )!;
+    await act(async () => box.click());
+    expect(button("Изменить", actions()).disabled).toBe(false);
+    await click("Изменить", actions());
+    await fill("Название", "Переименованный");
+    await fill("Окружение", "staging");
+    await submit("Сохранить изменения");
+    const renamed = calls.find((call) => call.method === "PATCH");
+    expect(renamed?.body).toEqual({
+      name: "Переименованный",
+      environment: "staging",
+    });
+    await click("Удалить", actions());
+    await fill("Пароль администратора", "TEST-PASSWORD");
+    await submit("Удалить из приложения");
+    const removed = calls.find((call) => call.method === "DELETE");
+    expect(removed?.path).toBe(`/api/clusters/${cluster.id}`);
+  });
+});
+
 describe("ready scope edit", () => {
   test("saved selection is explicit; admin reauth precedes candidate preflight and PATCH uses base CAS", async () => {
     const saved: Cluster[] = [];

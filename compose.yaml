@@ -1,7 +1,7 @@
 name: amberdata-workbench
 
 x-app: &app
-  image: amberdata-workbench:0.5.1-local
+  image: amberdata-workbench:0.5.2-local
   build:
     context: .
   user: "${WORKBENCH_UID:-10001}:${WORKBENCH_GID:-10001}"
