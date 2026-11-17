@@ -1,0 +1,112 @@
+name: amberdata-workbench
+
+x-app: &app
+  image: amberdata-workbench:0.5.4-local
+  build:
+    context: .
+    args:
+      APP_VERSION: "0.5.4"
+  user: "${WORKBENCH_UID:-10001}:${WORKBENCH_GID:-10001}"
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+  environment:
+    WORKBENCH_DATABASE_URL_FILE: /run/secrets/database-url
+    WORKBENCH_MASTER_KEY_FILE: /run/secrets/master-key
+    WORKBENCH_CONFIG_FILE: /app/config.json
+  secrets: [database-url, master-key]
+  volumes:
+    - type: bind
+      source: ${WORKBENCH_LOCAL_DIR:-./.local}/config.json
+      target: /app/config.json
+      read_only: true
+      bind:
+        create_host_path: false
+  networks: [database, outbound]
+  pids_limit: 128
+  cpus: 1.0
+  mem_limit: 768m
+  ulimits:
+    core: 0
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "3"
+
+services:
+  db:
+    image: postgres:17.5-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workbench
+      POSTGRES_USER: workbench
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    secrets: [postgres-password]
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    networks: [database]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U workbench -d workbench']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+
+  init-db:
+    <<: *app
+    command: [python, -m, workbench.admin, init-db]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WORKBENCH_PORT:-8080}:8080"
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import json,os,urllib.request; origin=json.load(open(os.environ['WORKBENCH_CONFIG_FILE']))['public_origin']; from urllib.parse import urlsplit; r=urllib.request.Request('http://127.0.0.1:8080/api/health/ready',headers={'Host':urlsplit(origin).netloc}); urllib.request.urlopen(r,timeout=3).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  worker:
+    <<: *app
+    command: [python, -m, workbench.worker]
+    restart: unless-stopped
+    stop_grace_period: 15s
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+
+secrets:
+  database-url:
+    file: ${WORKBENCH_LOCAL_DIR:-./.local}/database-url
+  master-key:
+    file: ${WORKBENCH_LOCAL_DIR:-./.local}/master-key
+  postgres-password:
+    file: ${WORKBENCH_LOCAL_DIR:-./.local}/postgres-password
+
+volumes:
+  database-data:
+
+networks:
+  database:
+    internal: true
+  outbound:
