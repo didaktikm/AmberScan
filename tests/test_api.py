@@ -490,7 +490,7 @@ def test_cluster_creation_defaults_and_encrypted_kubeconfig_credential(
 def test_capabilities_publish_the_confirmed_actions(workbench):
     login(workbench.client)
     body = workbench.client.get("/api/capabilities").json()
-    assert body["version"] == "0.5.1"
+    assert body["version"] == "0.5.2"
     features = body["features"]
     available = [item["id"] for item in features if item["status"] == "available"]
     assert available == [
@@ -505,6 +505,73 @@ def test_capabilities_publish_the_confirmed_actions(workbench):
         "remediate",
     ]
     assert [item["id"] for item in features if item["status"] == "not_implemented"] == ["team_sso"]
+
+
+def test_administrator_can_rename_and_delete_a_local_cluster(workbench, clusters):
+    client = workbench.client
+    login(client)
+    cluster = clusters.granted
+    with workbench.app.state.sessions() as session:
+        run = Run(
+            id=uid(),
+            cluster_id=cluster.id,
+            actor_id=workbench.users["admin"].id,
+            status="completed",
+            stage="cleanup",
+            scope={"namespaces": ["demo"]},
+            coverage=[],
+            limitations=[],
+            versions={},
+            source="api",
+        )
+        finding = Finding(
+            id=uid(),
+            cluster_id=cluster.id,
+            fingerprint="local-only-fingerprint",
+            latest_run_id=run.id,
+            data={"rule": "builtin:test"},
+        )
+        session.add(run)
+        session.flush()
+        session.add(finding)
+        session.flush()
+        session.add(Observation(run_id=run.id, finding_id=finding.id, data={}))
+        session.commit()
+        run_id, finding_id = run.id, finding.id
+    renamed = client.patch(
+        f"/api/clusters/{cluster.id}",
+        json={"name": "Новое имя", "environment": "staging"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Новое имя"
+    assert renamed.json()["environment"] == "staging"
+    assert renamed.json()["server"] == cluster.server
+    workbench.http_factory.assert_not_called()
+    login(client, "auditor")
+    assert_error(
+        client.patch(
+            f"/api/clusters/{cluster.id}",
+            json={"name": "Чужое", "environment": "prod"},
+        ),
+        403,
+        "forbidden",
+    )
+    assert_error(client.delete(f"/api/clusters/{cluster.id}"), 403, "forbidden")
+    login(client)
+    assert_error(client.delete(f"/api/clusters/{cluster.id}"), 403, "reauthentication_required")
+    assert client.post("/api/admin/reauth", json={"password": PASSWORD}).status_code == 200
+    deleted = client.delete(f"/api/clusters/{cluster.id}")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["status"] == "deleted"
+    assert all(item["id"] != cluster.id for item in client.get("/api/clusters").json())
+    with workbench.app.state.sessions() as session:
+        assert session.get(Cluster, cluster.id) is None
+        assert session.get(Run, run_id) is None
+        assert session.get(Finding, finding_id) is None
+        assert session.scalar(select(func.count(Observation.run_id))) == 0
+        event = session.scalar(select(AuditEvent).where(AuditEvent.action == "cluster_deleted"))
+        assert event.target == cluster.id and event.detail["name"] == "Новое имя"
+    workbench.http_factory.assert_not_called()
 
 
 def test_viewer_read_only_and_administrator_only_routes(

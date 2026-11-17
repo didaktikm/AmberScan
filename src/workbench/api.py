@@ -37,8 +37,10 @@ from workbench.connections import (
     create_draft,
     owned_draft,
     permitted_connection,
+    remove_ready_cluster,
     require_preflight_success,
     store_kubeconfig_credential,
+    update_cluster_profile,
 )
 from workbench.db import (
     AuditEvent,
@@ -125,6 +127,19 @@ class KubeconfigConnection(Input):
     kind: Literal["kubeconfig"]
     content: str = Field(min_length=1, max_length=262144)
     context: str = Field(min_length=1, max_length=250)
+
+
+class ClusterProfileInput(Input):
+    name: str = Field(min_length=1, max_length=120)
+    environment: str = Field(min_length=1, max_length=50)
+
+    @field_validator("name", "environment")
+    @classmethod
+    def trimmed(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("empty")
+        return value
 
 
 class DraftInput(Input):
@@ -432,6 +447,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/clusters")
     def list_clusters(request: Request, user: CurrentUser, session=Depends(db)):
         return [cluster_view(session, item, user, request.state.web_session.token_hash) for item in clusters_for(session, user)]
+
+    @app.patch("/api/clusters/{cluster_id}")
+    def update_cluster(cluster_id: str, payload: ClusterProfileInput, request: Request, user: CurrentUser, session=Depends(db)):
+        role(user, {"administrator"})
+        cluster = update_cluster_profile(session, user, cluster_id, payload.name, payload.environment)
+        result = cluster_view(session, cluster, user, request.state.web_session.token_hash)
+        session.commit()
+        return result
+
+    @app.delete("/api/clusters/{cluster_id}")
+    def delete_cluster(cluster_id: str, request: Request, user: CurrentUser, session=Depends(db)):
+        role(user, {"administrator"})
+        require_recent_reauth(request, user)
+        remove_ready_cluster(session, user, cluster_id)
+        session.commit()
+        return {"status": "deleted"}
 
     @app.post("/api/kubeconfig/inspect")
     def inspect(payload: KubeconfigInput, user: CurrentUser):

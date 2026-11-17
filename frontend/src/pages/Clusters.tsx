@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   Boxes,
   ChevronRight,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
   ShieldCheck,
   ShieldOff,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { api, errorText } from "../api";
@@ -543,6 +545,12 @@ export function ClustersPage({
   }
   const [launch, setLaunch] = useState<string>();
   const [created, setCreated] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileEnvironment, setProfileEnvironment] = useState("");
+  const [profileError, setProfileError] = useState<string>();
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [checked, setChecked] = useState<string[]>([]);
   const [logs, setLogs] = useState<LaunchLog[]>([]);
   const [actionBusy, setActionBusy] = useState<string>();
@@ -671,6 +679,77 @@ export function ClustersPage({
     capabilities.reload();
     drafts.reload();
   }
+  function openAdd() {
+    setCreated(false);
+    setDraftId(undefined);
+    setWizard(true);
+  }
+  function openProfile() {
+    const cluster = chosen[0];
+    if (!cluster) return;
+    setProfileName(cluster.name);
+    setProfileEnvironment(cluster.environment);
+    setProfileError(undefined);
+    setProfileOpen(true);
+  }
+  async function saveProfile() {
+    const cluster = chosen[0];
+    const name = profileName.trim();
+    const environment = profileEnvironment.trim();
+    if (!cluster || !name || !environment || profileBusy) return;
+    setProfileBusy(true);
+    setProfileError(undefined);
+    try {
+      await api(`/clusters/${encodeURIComponent(cluster.id)}`, {
+        method: "PATCH",
+        body: { name, environment },
+      });
+      setProfileOpen(false);
+      refresh();
+    } catch (reason) {
+      setProfileError(errorText(reason));
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+  async function deleteChosen() {
+    for (const cluster of chosen) {
+      await api(`/clusters/${encodeURIComponent(cluster.id)}`, {
+        method: "DELETE",
+      });
+    }
+    setChecked([]);
+    setDeleting(false);
+    if (selectedId && chosen.some((cluster) => cluster.id === selectedId))
+      setSelectedId(undefined);
+    refresh();
+  }
+  const manageActions = canManage(user.role) ? (
+    <>
+      <button className="button button-primary" type="button" onClick={openAdd}>
+        <Plus size={16} />
+        Добавить
+      </button>
+      <button
+        className="button button-secondary"
+        type="button"
+        disabled={chosen.length !== 1}
+        onClick={openProfile}
+      >
+        <Pencil size={16} />
+        Изменить
+      </button>
+      <button
+        className="button button-danger"
+        type="button"
+        disabled={!chosen.length}
+        onClick={() => setDeleting(true)}
+      >
+        <Trash2 size={16} />
+        Удалить
+      </button>
+    </>
+  ) : null;
   return (
     <>
       <PageHeader
@@ -683,14 +762,7 @@ export function ClustersPage({
               Обновить
             </button>
             {canManage(user.role) && (
-              <button
-                className="button button-primary"
-                onClick={() => {
-                  setCreated(false);
-                  setDraftId(undefined);
-                  setWizard(true);
-                }}
-              >
+              <button className="button button-primary" onClick={openAdd}>
                 <Plus size={17} />
                 Подключить кластер
               </button>
@@ -769,15 +841,23 @@ export function ClustersPage({
       )}
       {clusters.loading && !clusters.data ? (
         <Spinner />
-      ) : clusters.data?.length ? (
+      ) : clusters.data ? (
         <Panel
           title="Подключения"
           action={
-            <span className="small muted">{clusters.data.length} доступно</span>
+            <div
+              className="cluster-toolbar"
+              aria-label="Действия с кластерами"
+            >
+              <span className="small muted">
+                {ready.length} доступно
+              </span>
+              {manageActions}
+            </div>
           }
         >
-          {canScan(user.role) && (
-            <div className="cluster-toolbar">
+          {canScan(user.role) && ready.length > 0 && (
+            <div className="cluster-toolbar cluster-toolbar-body">
               <span className="small muted">
                 {chosen.length
                   ? `Выбрано: ${chosen.length}`
@@ -813,6 +893,7 @@ export function ClustersPage({
               </button>
             </div>
           )}
+          {ready.length ? (
           <div className="table-scroll">
             <table>
               <thead>
@@ -911,19 +992,13 @@ export function ClustersPage({
               </tbody>
             </table>
           </div>
-        </Panel>
-      ) : (
-        clusters.data && (
-          <Panel title="Подключения">
+          ) : (
             <EmptyState
               icon={<Boxes size={32} />}
               title="Нет доступных кластеров"
               action={
                 canManage(user.role) ? (
-                  <button
-                    className="button button-primary"
-                    onClick={() => setWizard(true)}
-                  >
+                  <button className="button button-primary" onClick={openAdd}>
                     <Upload size={17} />
                     Импортировать kubeconfig
                   </button>
@@ -934,9 +1009,9 @@ export function ClustersPage({
                 ? "Подключите кластер, выбрав контекст, способ авторизации и конкретные пространства имён. Полный доступ не запрашивается автоматически."
                 : "Попросите администратора создать подключение и предоставить вам доступ. Отсутствие записей не означает, что в системе нет кластеров."}
             </EmptyState>
-          </Panel>
-        )
-      )}
+          )}
+        </Panel>
+      ) : null}
       {canScan(user.role) && (
         <Panel title="Журнал запусков">
           {logs.length ? (
@@ -1022,6 +1097,76 @@ export function ClustersPage({
             openRun(run.id);
           }}
         />
+      )}
+      {profileOpen && chosen[0] && (
+        <Modal
+          title="Изменить кластер"
+          subtitle="Меняются только название и окружение в приложении. Адрес API и кластер Kubernetes остаются прежними."
+          onClose={() => {
+            if (!profileBusy) setProfileOpen(false);
+          }}
+          busy={profileBusy}
+        >
+          <form
+            className="form-stack"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveProfile();
+            }}
+          >
+            <ErrorBox message={profileError} />
+            <label>
+              Название
+              <input
+                value={profileName}
+                maxLength={120}
+                required
+                disabled={profileBusy}
+                onChange={(event) => setProfileName(event.target.value)}
+              />
+            </label>
+            <label>
+              Окружение
+              <input
+                value={profileEnvironment}
+                maxLength={50}
+                required
+                disabled={profileBusy}
+                onChange={(event) => setProfileEnvironment(event.target.value)}
+              />
+            </label>
+            <div className="button-row">
+              <button className="button button-primary" disabled={profileBusy}>
+                {profileBusy ? "Сохраняем…" : "Сохранить изменения"}
+              </button>
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled={profileBusy}
+                onClick={() => setProfileOpen(false)}
+              >
+                Отмена
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {deleting && (
+        <AdminConfirmation
+          title="Удалить подключения"
+          confirmLabel="Удалить из приложения"
+          danger
+          onClose={() => setDeleting(false)}
+          onConfirm={deleteChosen}
+          warning="Будут удалены выбранные подключения и сохранённые в приложении результаты проверок. Объекты в Kubernetes не изменяются и не удаляются."
+        >
+          <Definition
+            items={chosen.map((cluster) => [
+              cluster.name,
+              cluster.server,
+            ])}
+          />
+        </AdminConfirmation>
       )}
     </>
   );
