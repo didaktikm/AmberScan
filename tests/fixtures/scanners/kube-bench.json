@@ -1,0 +1,17 @@
+{
+  "Controls": [{
+    "id": "1",
+    "version": "cis-1.8",
+    "text": "<img src=x onerror=alert(1)>",
+    "node_type": "master",
+    "tests": [{
+      "section": "1.1",
+      "results": [
+        {"test_number": "1.1.1", "status": "FAIL", "test_desc": "fixture-private-description", "actual_value": "fixture-actual-secret", "audit": "cat /etc/kubernetes/admin.conf", "remediation": "fixture-private-remediation", "reason": "Bearer fixture-token"},
+        {"test_number": "1.1.2", "status": "PASS"},
+        {"test_number": "1.1.3", "status": "WARN", "reason": "password=fixture-password"}
+      ]
+    }]
+  }],
+  "Totals": {"total_fail": 1, "total_pass": 1, "total_warn": 1}
+}
