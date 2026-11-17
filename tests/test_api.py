@@ -490,7 +490,7 @@ def test_cluster_creation_defaults_and_encrypted_kubeconfig_credential(
 def test_capabilities_publish_the_confirmed_actions(workbench):
     login(workbench.client)
     body = workbench.client.get("/api/capabilities").json()
-    assert body["version"] == "0.5.2"
+    assert body["version"] == "0.5.3"
     features = body["features"]
     available = [item["id"] for item in features if item["status"] == "available"]
     assert available == [
