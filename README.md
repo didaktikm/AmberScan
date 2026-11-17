@@ -1,4 +1,4 @@
-# AmberData Kubernetes Security Workbench — kubeconfig-only / 0.5.3
+# AmberData Kubernetes Security Workbench — kubeconfig-only / 0.5.4
 
 Браузерный React UI, FastAPI API, PostgreSQL и отдельный worker. Единственный способ подключения Kubernetes — **self-contained kubeconfig с inline token или клиентским сертификатом/ключом**. Авторизация через внешних провайдеров, redirects и соответствующие настройки удалены из действующего приложения. Локальный вход Workbench остаётся отдельным от Kubernetes identity.
 
@@ -43,7 +43,7 @@ docker --context desktop-linux compose exec api python -m workbench.admin create
 
 Credentials личные, зашифрованные, не передаются другим пользователям через grants. Исходный YAML не хранится. Не присылайте kubeconfig, токены и private keys в чат/issue/логи. При истечении доступа используйте повторный импорт для того же endpoint/CA/context. TLS/hostname/SNI, DNS pinning и сетевые ограничения не отключаются.
 
-Подробности: [KUBECONFIG-AUTH.md](docs/KUBECONFIG-AUTH.md). Исторические схемы/миграции и offline проверка старых backups сохраняют описания прежнего формата исключительно для обновления и восстановления.
+Подробности: [KUBECONFIG-AUTH.md](docs/KUBECONFIG-AUTH.md). Для совместной разработки сначала прочитайте [docs/agent/README.md](docs/agent/README.md): там текущее устройство, а не исторические контракты. Исторические схемы/миграции и offline проверка старых backups сохраняют описания прежнего формата исключительно для обновления и восстановления.
 
 ## Повторный запуск и остановка
 
@@ -59,6 +59,8 @@ docker --context desktop-linux compose stop api worker
 Не используйте `down -v`. Не удаляйте `.local/master-key`: новый ключ не расшифрует старые данные. При смене порта согласованно измените `WORKBENCH_PORT` и deployment `public_origin` до запуска. Если secret-файлы недоступны, проверьте владельца/UID/GID, а не ослабляйте права до `0644`.
 
 ## Ограничения
+
+Актуальный статус функций — в [docs/agent/capabilities.md](docs/agent/capabilities.md). Пункты ниже описывают прежние границы пилота и могут отставать от кода.
 
 - Живые Kubescape/Trivy не реализованы: доступны ограниченные встроенные read-only проверки и импорт поддерживаемых JSON-отчётов. См. [SCANNERS.md](docs/SCANNERS.md).
 - Нет расписаний, автоматического refresh credentials, SSO приложения, runtime/operator-интеграций и автоисправлений.
@@ -86,7 +88,7 @@ uv run --frozen ruff check src tests
 
 ```bash
 PYTHONPATH=src uv run --frozen python tests/smoke_namespace_postgres.py \
-  --maintenance-image amberdata-workbench-maintenance:0.5.3-local
+  --maintenance-image amberdata-workbench-maintenance:0.5.4-local
 PYTHONPATH=src uv run --frozen python tests/smoke_compose.py
 ```
 
