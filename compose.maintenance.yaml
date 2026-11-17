@@ -1,9 +1,11 @@
 services:
   maintenance:
-    image: amberdata-workbench-maintenance:0.5.2-local
+    image: amberdata-workbench-maintenance:0.5.3-local
     build:
       context: .
       target: maintenance
+      args:
+        APP_VERSION: "0.5.3"
     profiles: [maintenance]
     user: "${WORKBENCH_UID:-10001}:${WORKBENCH_GID:-10001}"
     init: true

@@ -1,9 +1,11 @@
 name: amberdata-workbench
 
 x-app: &app
-  image: amberdata-workbench:0.5.2-local
+  image: amberdata-workbench:0.5.3-local
   build:
     context: .
+    args:
+      APP_VERSION: "0.5.3"
   user: "${WORKBENCH_UID:-10001}:${WORKBENCH_GID:-10001}"
   init: true
   read_only: true

@@ -1,4 +1,4 @@
-# Подключение только через kubeconfig — 0.5.2
+# Подключение только через kubeconfig — 0.5.3
 
 ## Что меняется
 
@@ -56,7 +56,7 @@ Credentials принадлежат паре **пользователь–кла�
 
 ## Обновление существующей установки
 
-**Изменения исходников не обновляют работающий Docker-образ.** Схема0.5.0 требует отдельной offline-миграции из0.1–0.4. Runtime и maintenance tags: `amberdata-workbench:0.5.2-local` и `amberdata-workbench-maintenance:0.5.2-local`. Revision: `0005_remove_oidc`.
+**Изменения исходников не обновляют работающий Docker-образ.** Схема0.5.0 требует отдельной offline-миграции из0.1–0.4. Runtime и maintenance tags: `amberdata-workbench:0.5.3-local` и `amberdata-workbench-maintenance:0.5.3-local`. Revision: `0005_remove_oidc`.
 
 Процедура предназначена оператору; не выполняйте её без подтверждённого окна обслуживания. Она относится только к этому проекту, не к соседнему Compose или production-кластеру.
 
@@ -90,6 +90,6 @@ bun run --cwd frontend typecheck
 bun run --cwd frontend build
 ```
 
-Изолированная PostgreSQL-проверка: `PYTHONPATH=src uv run --frozen python tests/smoke_namespace_postgres.py --maintenance-image amberdata-workbench-maintenance:0.5.2-local`. Текущий исходный код монтируется read-only. Скрипт создаёт собственные случайно именованные контейнеры с изолированной сетью и tmpfs-БД, без пользовательских volumes или published ports, проверяет upgrade/backup/restore и удаляет только свои контейнеры. Образы должны быть заранее доступны; ничего не скачивается.
+Изолированная PostgreSQL-проверка: `PYTHONPATH=src uv run --frozen python tests/smoke_namespace_postgres.py --maintenance-image amberdata-workbench-maintenance:0.5.3-local`. Текущий исходный код монтируется read-only. Скрипт создаёт собственные случайно именованные контейнеры с изолированной сетью и tmpfs-БД, без пользовательских volumes или published ports, проверяет upgrade/backup/restore и удаляет только свои контейнеры. Образы должны быть заранее доступны; ничего не скачивается.
 
 [KUBECONFIG-VERIFICATION.md](KUBECONFIG-VERIFICATION.md) описывает историческую проверку0.4, не приёмку0.5. Unit/mocked integration tests не доказывают совместимость с конкретным k3s, Kubernetes RBAC или production-сетью. Live-проверка требует явного разрешения и выполняется отдельно от изолированных тестов. Обновление пользовательского Compose/БД — отдельная операция обслуживания.
